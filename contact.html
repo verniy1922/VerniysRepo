@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>联系我 · verniy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%234A90D9'/%3E%3C/svg%3E">
+<style>
+  /* ===================== 设计变量（三个页面保持一致） ===================== */
+  :root{
+    --blue:        #4A90D9;
+    --blue-dark:   #3A7ABF;
+    --blue-soft:   #EAF2FB;
+    --blue-line:   #D6E6F7;
+    --bg:          #F7F9FC;
+    --card:        #FFFFFF;
+    --text:        #3A3F47;
+    --text-soft:   #6B7280;
+    --text-faint:  #9AA3AF;
+    --line:        #E8ECF1;
+    --radius:      14px;
+    --shadow:      0 1px 2px rgba(16,24,40,.04), 0 6px 18px rgba(16,24,40,.05);
+    --shadow-lg:   0 2px 4px rgba(16,24,40,.05), 0 14px 32px rgba(16,24,40,.09);
+    --maxw:        820px;
+  }
+
+  /* ===================== 基础 ===================== */
+  *,*::before,*::after{ box-sizing:border-box; }
+  html{ -webkit-text-size-adjust:100%; scroll-behavior:smooth; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",Helvetica,Arial,sans-serif;
+    font-size:16px;
+    line-height:1.75;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{ color:var(--blue); text-decoration:none; }
+  a:hover{ color:var(--blue-dark); text-decoration:underline; }
+  :focus-visible{ outline:2px solid var(--blue); outline-offset:2px; border-radius:6px; }
+
+  /* ===================== 页面外壳 ===================== */
+  .shell{ min-height:100vh; display:flex; flex-direction:column; }
+
+  /* ---------- 顶栏 ---------- */
+  .topbar{
+    position:sticky; top:0; z-index:30;
+    background:rgba(255,255,255,.85);
+    backdrop-filter:saturate(180%) blur(10px);
+    -webkit-backdrop-filter:saturate(180%) blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .topbar-inner{
+    max-width:var(--maxw);
+    margin:0 auto;
+    padding:10px 20px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+  }
+  .nav-group,
+  .audio-group{ display:flex; align-items:center; gap:8px; min-width:0; }
+
+  /* ---------- 按钮 ---------- */
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    padding:7px 14px;
+    font-size:14px;
+    font-family:inherit;
+    font-weight:600;
+    line-height:1.4;
+    color:var(--blue);
+    background:#fff;
+    border:1px solid var(--blue-line);
+    border-radius:999px;
+    cursor:pointer;
+    white-space:nowrap;
+    transition:background-color .18s ease, color .18s ease, border-color .18s ease, transform .18s ease, box-shadow .18s ease;
+  }
+  .btn:hover{
+    background:var(--blue-soft);
+    border-color:#C3DBF3;
+    color:var(--blue-dark);
+    text-decoration:none;
+    transform:translateY(-1px);
+  }
+  .btn:active{ transform:translateY(0); }
+  .btn-primary{ color:#fff; background:var(--blue); border-color:var(--blue); }
+  .btn-primary:hover{ color:#fff; background:var(--blue-dark); border-color:var(--blue-dark); }
+  .btn[disabled]{ opacity:.45; cursor:not-allowed; transform:none; }
+  #playBtn.is-active{ color:#fff; background:var(--blue); border-color:var(--blue); }
+  #playBtn.is-active:hover{ background:var(--blue-dark); border-color:var(--blue-dark); color:#fff; }
+  .btn-compact{ padding:7px 10px; }
+  .btn-compact .label{ display:none; }
+
+  /* ---------- 顶部播放状态提示条 ---------- */
+  .audio-note{
+    max-width:var(--maxw);
+    margin:0 auto;
+    padding:0 20px;
+    max-height:0;
+    overflow:hidden;
+    font-size:12.5px;
+    color:var(--text-soft);
+    opacity:0;
+    transition:max-height .28s ease, opacity .28s ease, padding .28s ease;
+  }
+  .audio-note.is-visible{ max-height:48px; opacity:1; padding:8px 20px 10px; }
+
+  /* ---------- 主体 ---------- */
+  .main{
+    flex:1 0 auto;
+    width:100%;
+    max-width:var(--maxw);
+    margin:0 auto;
+    padding:40px 20px 72px;
+  }
+
+  /* ===================== 联系我 ===================== */
+  .contact-head{ margin:8px 0 28px; }
+  .contact-title{
+    margin:0 0 10px;
+    font-size:clamp(28px,6.4vw,38px);
+    line-height:1.25;
+    font-weight:800;
+    letter-spacing:-.01em;
+  }
+  .contact-sub{ margin:0; color:var(--text-soft); max-width:56ch; }
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    padding:26px 24px;
+  }
+
+  .card-label{
+    margin:0 0 12px;
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--text-faint);
+  }
+
+  /* 邮箱显示区 */
+  .mail-row{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:12px 14px;
+  }
+  .mail-value{
+    font-size:clamp(17px,4.6vw,22px);
+    font-weight:700;
+    letter-spacing:.01em;
+    color:var(--text);
+    word-break:break-all;      /* 小屏幕上邮箱不会溢出 */
+  }
+  .mail-value:hover{ color:var(--blue); text-decoration:none; }
+  .mail-actions{ display:flex; flex-wrap:wrap; gap:10px; }
+
+  .divider{ height:1px; background:var(--line); margin:24px 0; }
+
+  .notes{ margin:0; padding-left:1.15em; color:var(--text-soft); font-size:15.5px; }
+  .notes li{ margin-bottom:8px; }
+  .notes li:last-child{ margin-bottom:0; }
+  .notes strong{ color:var(--text); }
+
+  .hint{
+    margin-top:24px;
+    font-size:13.5px;
+    color:var(--text-faint);
+    min-height:20px;
+  }
+  .hint.is-ok{ color:var(--blue-dark); font-weight:600; }
+
+  /* ===================== 页脚 ===================== */
+  .site-footer{ flex:0 0 auto; border-top:1px solid var(--line); background:#fff; }
+  .footer-inner{
+    max-width:var(--maxw);
+    margin:0 auto;
+    padding:22px 20px;
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px 16px;
+    font-size:13px;
+    color:var(--text-faint);
+  }
+  .footer-links{ display:flex; flex-wrap:wrap; gap:14px; }
+
+  /* ===================== 响应式 ===================== */
+  @media (max-width:560px){
+    body{ font-size:15.5px; }
+    .main{ padding:26px 16px 56px; }
+    .topbar-inner{ padding:8px 12px; }
+    .btn{ padding:7px 11px; font-size:13px; }
+    .card{ padding:20px 16px; }
+    .mail-row{ flex-direction:column; align-items:flex-start; }
+    .mail-actions{ width:100%; }
+    .mail-actions .btn{ flex:1 1 auto; }
+    .footer-inner{ padding:18px 16px; }
+  }
+  @media (max-width:360px){ .btn-compact{ padding:7px 9px; } }
+  @media (min-width:1024px){ :root{ --maxw:860px; } }
+  @media (prefers-reduced-motion:reduce){
+    *{ transition:none !important; animation:none !important; scroll-behavior:auto !important; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ================= 顶栏：左上角“回到主页”，右上角 BGM 控制 ================= -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <nav class="nav-group" aria-label="页面导航">
+        <a class="btn btn-compact" href="index.html">
+          <span aria-hidden="true">&larr;</span> 回到主页
+        </a>
+      </nav>
+
+      <div class="audio-group">
+        <button id="playBtn" class="btn btn-compact" type="button" aria-pressed="false" title="播放背景音乐">
+          <span aria-hidden="true">&#9654;</span><span class="label">播放</span>
+        </button>
+        <button id="pauseBtn" class="btn btn-compact" type="button" title="暂停背景音乐">
+          <span aria-hidden="true">&#10073;&#10073;</span><span class="label">暂停</span>
+        </button>
+      </div>
+    </div>
+    <p id="audioNote" class="audio-note" role="status" aria-live="polite"></p>
+  </header>
+
+  <!-- ================= 主体 ================= -->
+  <main class="main">
+
+    <div class="contact-head">
+      <h1 class="contact-title">联系我</h1>
+      <p class="contact-sub">
+        有任何想说的 —— 建议、问题、合作，或者只是想打个招呼，都欢迎写信给我。
+      </p>
+    </div>
+
+    <section class="card">
+      <p class="card-label">邮箱</p>
+
+      <div class="mail-row">
+        <a class="mail-value" href="mailto:984736898@qq.com">984736898@qq.com</a>
+        <div class="mail-actions">
+          <a class="btn btn-primary" href="mailto:984736898@qq.com">写邮件</a>
+          <button class="btn" id="copyBtn" type="button" data-mail="984736898@qq.com">复制邮箱</button>
+        </div>
+      </div>
+
+      <div class="divider" aria-hidden="true"></div>
+
+      <ul class="notes">
+        <li>我通常会在 <strong>1～3 天</strong> 内回复，如果没有收到回信，可能是被邮件服务商归到了垃圾箱。</li>
+        <li>随时欢迎来找我聊天呀，因为我平常真的太太太太太无聊了…( ´•̥̥̥ω•̥̥̥` )</li>
+      </ul>
+
+      <p class="hint" id="copyHint" role="status" aria-live="polite"></p>
+    </section>
+
+  </main>
+
+  <!-- ================= 页脚 ================= -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <span>&copy; <span id="year">2025</span> verniy &middot; 保留所有权利</span>
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="index.html">主页</a>
+        <a href="about.html">关于我</a>
+        <a href="contact.html">联系我</a>
+      </nav>
+    </div>
+  </footer>
+
+</div>
+
+<!-- 背景音乐：默认不播放；切页后会从上次的位置接着播 -->
+<audio id="bgm" src="assets/bgm.mp3" loop preload="auto"></audio>
+
+<script>
+(function () {
+  'use strict';
+
+  /* 跨页面续播：把「是否在播」和「播到第几秒」写进 localStorage，
+     新页面加载后读回来，从上次的位置接着播。
+     注意：静态网页每次跳转都是全新加载，音频无法真的"不断"延续，
+     所以这里做的是"回到同一首歌的同一秒"。 */
+  var KEY  = 'verniy.bgm.state.v1';      // 播放状态与进度
+  var TICK = 'verniy.bgm.tick.v1';       // 进度心跳，仅在播放中写入（切页时用于判断"当时确实在播"）
+  var audio = document.getElementById('bgm');
+  var playBtn = document.getElementById('playBtn');
+  var pauseBtn = document.getElementById('pauseBtn');
+  var note = document.getElementById('audioNote');
+  var noteTimer = null;
+  var resumeAt = 0;          // 切页时需要跳转到的秒数
+  var wantPlaying = false;   // 本次加载是否应该自动续播
+
+  /* ---------- 页脚年份 ---------- */
+  var yearEl = document.getElementById('year');
+  if (yearEl) { yearEl.textContent = new Date().getFullYear(); }
+
+  /* ---------- 顶部提示条 ---------- */
+  function showNote(msg, ms) {
+    if (!note) return;
+    note.textContent = msg;
+    note.classList.add('is-visible');
+    if (noteTimer) clearTimeout(noteTimer);
+    if (ms) noteTimer = setTimeout(hideNote, ms);
+  }
+  function hideNote() {
+    if (!note) return;
+    note.classList.remove('is-visible');
+  }
+
+  /* ---------- 读写状态 ---------- */
+  function readJSON(key) {
+    try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { return null; }
+  }
+  function writeJSON(key, obj) {
+    try { localStorage.setItem(key, JSON.stringify(obj)); } catch (e) {}
+  }
+
+  /* ---------- 按钮状态同步 ---------- */
+  function syncUI(playing) {
+    if (playBtn) {
+      playBtn.classList.toggle('is-active', playing);
+      playBtn.setAttribute('aria-pressed', playing ? 'true' : 'false');
+      playBtn.title = playing ? '背景音乐播放中' : '播放背景音乐';
+    }
+    if (pauseBtn) { pauseBtn.title = playing ? '暂停背景音乐' : '播放背景音乐'; }
+  }
+
+  /* ---------- 保存进度（离开页面 / 暂停 / 播放中定时保存） ---------- */
+  function saveState(playing) {
+    var t = 0;
+    try { t = audio.currentTime || 0; } catch (e) { t = 0; }
+    var atEnd = audio.duration && isFinite(audio.duration) && t >= audio.duration - 0.35;
+    if (atEnd) { t = 0; }                       // 播到结尾时从头开始
+    writeJSON(KEY, { playing: !!playing, time: Math.round(t * 1000) / 1000 });
+    if (playing) { writeJSON(TICK, Date.now()); }
+  }
+
+  /* ---------- 播放 / 暂停 ---------- */
+  function play(opts) {
+    opts = opts || {};
+    // 每次开始播放前都确认进度已同步，避免续播时从头开始
+    if (typeof opts.from === 'number' && isFinite(opts.from) && opts.from > 0.05) {
+      try {
+        if (Math.abs(audio.currentTime - opts.from) > 0.2) { audio.currentTime = opts.from; }
+      } catch (e) {}
+    }
+
+    if (opts.note) { showNote(opts.note, 3600); }
+
+    var p = audio.play();
+    if (p && typeof p.then === 'function') {
+      p.then(function () {
+        wantPlaying = true;
+        saveState(true);
+        syncUI(true);
+      }).catch(function () {
+        /* 浏览器拦截了自动播放（刚打开页面时很常见）：
+           把位置记下来，等用户点一下"播放"再从同一秒继续 */
+        syncUI(false);
+        if (opts.silentBlock) {
+          showNote('浏览器要求先点一下页面才能出声 —— 点右上角「播放」即可从上次的位置继续。', 6000);
+        } else {
+          showNote('浏览器阻止了自动播放，请再点一次「播放」按钮，会从上次的位置继续。', 5200);
+        }
+      });
+    }
+  }
+
+  function pause() {
+    audio.pause();
+    saveState(false);
+    wantPlaying = false;
+    syncUI(false);
+    showNote('背景音乐已暂停（切页后会停在这里，点「播放」从这一秒继续）', 3200);
+  }
+
+  /* ---------- 事件绑定 ---------- */
+  if (playBtn)  { playBtn.addEventListener('click', function () { play({ from: resumeAt }); }); }
+  if (pauseBtn) { pauseBtn.addEventListener('click', pause); }
+
+  audio.addEventListener('play',  function () { wantPlaying = true; syncUI(true); });
+  audio.addEventListener('pause', function () { syncUI(false); });
+  audio.addEventListener('timeupdate', function () {
+    if (!audio.paused) { saveState(true); }
+  });
+  audio.addEventListener('loadedmetadata', function () {
+    // 元数据就绪后再跳进度最稳
+    if (wantPlaying && resumeAt > 0.05) {
+      try {
+        if (Math.abs(audio.currentTime - resumeAt) > 0.2 && resumeAt < audio.duration - 0.5) {
+          audio.currentTime = resumeAt;
+        }
+      } catch (e) {}
+    }
+  });
+
+  /* ---------- 离开页面：记下状态与进度 ---------- */
+  window.addEventListener('pagehide', function () { saveState(!audio.paused); });
+  window.addEventListener('beforeunload', function () { saveState(!audio.paused); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { saveState(!audio.paused); }
+  });
+
+  /* 画面未加载完时先跳到目标位置（loadedmetadata 后再修正一次） */
+  function seekTo(t) {
+    if (!(t > 0.05)) return;
+    try { audio.currentTime = t; } catch (e) {}
+    var once = function () {
+      try {
+        if (audio.duration && isFinite(audio.duration) && t < audio.duration - 0.5 &&
+            Math.abs(audio.currentTime - t) > 0.2) { audio.currentTime = t; }
+      } catch (e) {}
+      audio.removeEventListener('loadedmetadata', once);
+    };
+    audio.addEventListener('loadedmetadata', once);
+  }
+
+  /* ---------- 载入：默认关闭；只有上次确实在播才续播 ---------- */
+  syncUI(false);
+  var savedState = readJSON(KEY);
+  var savedTick  = readJSON(TICK);
+  var stillFresh = typeof savedTick === 'number' && (Date.now() - savedTick) < 30000;
+
+  if (savedState && typeof savedState.time === 'number' && isFinite(savedState.time)) {
+    resumeAt = savedState.time;
+  }
+
+  if (savedState && savedState.playing === true && stillFresh) {
+    wantPlaying = true;
+    seekTo(resumeAt);                     // 续播：从上次那一秒接着播
+    showNote(resumeAt > 0.05
+      ? '接着上次的位置继续播放（已到 ' + Math.floor(resumeAt / 60) + ':' + ('0' + Math.floor(resumeAt % 60)).slice(-2) + '）'
+      : '正在继续播放背景音乐', 4000);
+    play({ from: resumeAt, silentBlock: true });
+  } else if (savedState && savedState.playing === false) {
+    seekTo(resumeAt);                     // 上次是暂停：停在那一秒，下次点播放从这里继续
+  }
+
+  /* ---------- 快捷键：空格播放 / 暂停（焦点不在按钮上时） ---------- */
+  document.addEventListener('keydown', function (e) {
+    if (e.code !== 'Space' && e.key !== ' ') return;
+    var t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (t && t.closest && t.closest('button, a')) return;
+    e.preventDefault();
+    if (audio.paused) { play({ from: resumeAt }); } else { pause(); }
+  });
+
+  /* ================= 复制邮箱 ================= */
+  var copyBtn = document.getElementById('copyBtn');
+  var copyHint = document.getElementById('copyHint');
+  var hintTimer = null;
+
+  function setHint(msg, ok) {
+    if (!copyHint) return;
+    copyHint.textContent = msg;
+    copyHint.classList.toggle('is-ok', !!ok);
+    if (hintTimer) clearTimeout(hintTimer);
+    hintTimer = setTimeout(function () {
+      copyHint.textContent = '';
+      copyHint.classList.remove('is-ok');
+    }, 3200);
+  }
+
+  if (copyBtn) {
+    copyBtn.addEventListener('click', function () {
+      var mail = copyBtn.getAttribute('data-mail') || '984736898@qq.com';
+
+      function fallbackCopy() {
+        // 兼容不支持剪贴板 API 的浏览器 / 非 HTTPS 环境
+        var ta = document.createElement('textarea');
+        ta.value = mail;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '-1000px';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        setHint(ok ? '邮箱已复制到剪贴板：' + mail : '复制失败，请手动选中邮箱地址后复制。', ok);
+      }
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(mail).then(function () {
+          setHint('邮箱已复制到剪贴板：' + mail, true);
+        }).catch(fallbackCopy);
+      } else {
+        fallbackCopy();
+      }
+    });
+  }
+})();
+</script>
+</body>
+</html>

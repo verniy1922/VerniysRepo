@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>关于我 · verniy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%234A90D9'/%3E%3C/svg%3E">
+<style>
+  /* ===================== 设计变量（三个页面保持一致） ===================== */
+  :root{
+    --blue:        #4A90D9;
+    --blue-dark:   #3A7ABF;
+    --blue-soft:   #EAF2FB;
+    --blue-line:   #D6E6F7;
+    --bg:          #F7F9FC;
+    --card:        #FFFFFF;
+    --text:        #3A3F47;
+    --text-soft:   #6B7280;
+    --text-faint:  #9AA3AF;
+    --line:        #E8ECF1;
+    --radius:      14px;
+    --shadow:      0 1px 2px rgba(16,24,40,.04), 0 6px 18px rgba(16,24,40,.05);
+    --shadow-lg:   0 2px 4px rgba(16,24,40,.05), 0 14px 32px rgba(16,24,40,.09);
+    --maxw:        820px;
+  }
+
+  /* ===================== 基础 ===================== */
+  *,*::before,*::after{ box-sizing:border-box; }
+  html{ -webkit-text-size-adjust:100%; scroll-behavior:smooth; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",Helvetica,Arial,sans-serif;
+    font-size:16px;
+    line-height:1.75;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{ color:var(--blue); text-decoration:none; }
+  a:hover{ color:var(--blue-dark); text-decoration:underline; }
+  :focus-visible{ outline:2px solid var(--blue); outline-offset:2px; border-radius:6px; }
+
+  /* ===================== 页面外壳 ===================== */
+  .shell{ min-height:100vh; display:flex; flex-direction:column; }
+
+  /* ---------- 顶栏 ---------- */
+  .topbar{
+    position:sticky; top:0; z-index:30;
+    background:rgba(255,255,255,.85);
+    backdrop-filter:saturate(180%) blur(10px);
+    -webkit-backdrop-filter:saturate(180%) blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .topbar-inner{
+    max-width:var(--maxw);
+    margin:0 auto;
+    padding:10px 20px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+  }
+  .nav-group,
+  .audio-group{ display:flex; align-items:center; gap:8px; min-width:0; }
+
+  /* ---------- 按钮 ---------- */
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    padding:7px 14px;
+    font-size:14px;
+    font-family:inherit;
+    font-weight:600;
+    line-height:1.4;
+    color:var(--blue);
+    background:#fff;
+    border:1px solid var(--blue-line);
+    border-radius:999px;
+    cursor:pointer;
+    white-space:nowrap;
+    transition:background-color .18s ease, color .18s ease, border-color .18s ease, transform .18s ease, box-shadow .18s ease;
+  }
+  .btn:hover{
+    background:var(--blue-soft);
+    border-color:#C3DBF3;
+    color:var(--blue-dark);
+    text-decoration:none;
+    transform:translateY(-1px);
+  }
+  .btn:active{ transform:translateY(0); }
+  .btn[disabled]{ opacity:.45; cursor:not-allowed; transform:none; }
+  #playBtn.is-active{ color:#fff; background:var(--blue); border-color:var(--blue); }
+  #playBtn.is-active:hover{ background:var(--blue-dark); border-color:var(--blue-dark); color:#fff; }
+  .btn-compact{ padding:7px 10px; }
+  .btn-compact .label{ display:none; }
+
+  /* ---------- 顶部播放状态提示条 ---------- */
+  .audio-note{
+    max-width:var(--maxw);
+    margin:0 auto;
+    padding:0 20px;
+    max-height:0;
+    overflow:hidden;
+    font-size:12.5px;
+    color:var(--text-soft);
+    opacity:0;
+    transition:max-height .28s ease, opacity .28s ease, padding .28s ease;
+  }
+  .audio-note.is-visible{ max-height:48px; opacity:1; padding:8px 20px 10px; }
+
+  /* ---------- 主体 ---------- */
+  .main{
+    flex:1 0 auto;
+    width:100%;
+    max-width:var(--maxw);
+    margin:0 auto;
+    padding:40px 20px 72px;
+  }
+
+  /* ===================== 关于我：头像 + 名字 + 简介 ===================== */
+  .profile{
+    display:flex;
+    flex-direction:column;
+    align-items:center;      /* 水平居中 */
+    text-align:center;
+    margin-top:8px;          /* 位置偏上 */
+  }
+
+  /* 圆形头像：只露出圆形区域 */
+  .avatar-ring{
+    width:clamp(150px,40vw,208px);
+    height:clamp(150px,40vw,208px);
+    padding:6px;                                  /* 头像外的柔和光圈 */
+    border-radius:50%;
+    background:linear-gradient(140deg,#FFFFFF,#EAF2FB);
+    border:1px solid var(--blue-line);
+    box-shadow:var(--shadow-lg);
+  }
+  .avatar{
+    display:block;
+    width:100%;
+    height:100%;
+    border-radius:50%;        /* 只展示圆形区域 */
+    object-fit:cover;         /* 图片不变形，自动裁成正方形 */
+    object-position:50% 34%;  /* 略微上移，保证脸部位于圆形中央 */
+    background:var(--blue-soft);
+  }
+
+  .profile-name{
+    margin:26px 0 0;
+    font-size:clamp(30px,7.5vw,44px);
+    line-height:1.2;
+    font-weight:800;
+    letter-spacing:.01em;
+    color:var(--text);
+  }
+  .profile-role{
+    margin:8px 0 0;
+    font-size:13px;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--text-faint);
+  }
+
+  /* 分隔线 */
+  .divider{
+    width:56px;
+    height:3px;
+    margin:26px auto 0;
+    border-radius:999px;
+    background:var(--blue);
+    opacity:.55;
+  }
+
+  /* ★ 可自由键入文本的区域 ★ */
+  .bio{
+    width:100%;
+    max-width:min(620px,100%);   /* 窄屏不溢出 */
+    align-self:stretch;
+    margin:26px auto 0;
+    font-size:clamp(15px,3.6vw,17px);
+    line-height:1.95;
+    color:var(--text-soft);
+  }
+  .bio p{ margin:0 0 16px; }
+  .bio p:last-child{ margin-bottom:0; }
+  .bio strong{ color:var(--text); font-weight:700; }
+
+  /* 资料卡（可选，不需要可整段删除） */
+  .facts{
+    width:100%;
+    max-width:min(620px,100%);   /* 窄屏不溢出 */
+    align-self:stretch;
+    margin:32px auto 0;
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    padding:8px 22px;
+    text-align:left;
+  }
+  .fact{
+    display:flex;
+    flex-wrap:wrap;
+    gap:4px 12px;
+    justify-content:space-between;
+    padding:12px 0;
+    border-bottom:1px solid var(--line);
+    font-size:14.5px;
+  }
+  .fact:last-child{ border-bottom:none; }
+  .fact dt{ color:var(--text-faint); margin:0; }
+  .fact dd{ margin:0; color:var(--text); font-weight:600; }
+
+  .actions{
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    gap:12px;
+    margin-top:34px;
+    max-width:100%;
+  }
+  .actions .btn{ padding:9px 20px; font-size:14.5px; }
+  .actions .btn .label{ display:inline; }
+
+  /* ===================== 页脚 ===================== */
+  .site-footer{ flex:0 0 auto; border-top:1px solid var(--line); background:#fff; }
+  .footer-inner{
+    max-width:var(--maxw);
+    margin:0 auto;
+    padding:22px 20px;
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px 16px;
+    font-size:13px;
+    color:var(--text-faint);
+  }
+  .footer-links{ display:flex; flex-wrap:wrap; gap:14px; }
+
+  /* ===================== 响应式 ===================== */
+  @media (max-width:560px){
+    body{ font-size:15.5px; }
+    .main{ padding:26px 16px 56px; }
+    .topbar-inner{ padding:8px 12px; }
+    .btn{ padding:7px 11px; font-size:13px; }
+    .profile-name{ margin-top:22px; }
+    .bio{ line-height:1.9; }
+    .facts{ padding:6px 16px; }
+    .footer-inner{ padding:18px 16px; }
+  }
+  @media (max-width:360px){
+    .btn-compact{ padding:7px 9px; }
+  }
+  @media (min-width:1024px){ :root{ --maxw:860px; } }
+  @media (prefers-reduced-motion:reduce){
+    *{ transition:none !important; animation:none !important; scroll-behavior:auto !important; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ================= 顶栏：左上角“回到主页”，右上角 BGM 控制 ================= -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <nav class="nav-group" aria-label="页面导航">
+        <a class="btn btn-compact" href="index.html">
+          <span aria-hidden="true">&larr;</span> 回到主页
+        </a>
+      </nav>
+
+      <div class="audio-group">
+        <button id="playBtn" class="btn btn-compact" type="button" aria-pressed="false" title="播放背景音乐">
+          <span aria-hidden="true">&#9654;</span><span class="label">播放</span>
+        </button>
+        <button id="pauseBtn" class="btn btn-compact" type="button" title="暂停背景音乐">
+          <span aria-hidden="true">&#10073;&#10073;</span><span class="label">暂停</span>
+        </button>
+      </div>
+    </div>
+    <p id="audioNote" class="audio-note" role="status" aria-live="polite"></p>
+  </header>
+
+  <!-- ================= 主体 ================= -->
+  <main class="main">
+    <section class="profile">
+
+      <!-- 圆形头像 -->
+      <div class="avatar-ring">
+        <img class="avatar" src="assets/avatar.jpg" alt="verniy 的头像" width="208" height="208">
+      </div>
+
+      <!-- 名字 -->
+      <h1 class="profile-name">verniy</h1>
+      <p class="profile-role">personal blog</p>
+
+      <div class="divider" aria-hidden="true"></div>
+
+      <!-- ★★★ 下面这段文字可以直接改成你自己的内容 ★★★ -->
+      <div class="bio">
+        <p>
+          自称牢一，大二工科牛马一只
+        </p>
+
+
+      </div>
+      <!-- ★★★ 可自由键入文本的区域到此结束 ★★★ -->
+
+      <!-- 资料卡：不需要时可以把整个 <dl> 删除 -->
+      <dl class="facts">
+        <div class="fact">
+          <dt>昵称</dt>
+          <dd>verniy</dd>
+        </div>
+        <div class="fact">
+          <dt>邮箱</dt>
+          <dd>984736898@qq.com</dd>
+
+        </div>
+        <div class="fact">
+          <dt>成分</dt>
+          <dd>小众嘉豪文艺b、轻度术力口、左批、重度雷批</dd>
+        </div>
+      </dl>
+
+      <div class="actions">
+        <a class="btn" href="index.html">看看我的博客</a>
+        <a class="btn" href="contact.html">联系我</a>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- ================= 页脚 ================= -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <span>&copy; <span id="year">2025</span> verniy &middot; 保留所有权利</span>
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="index.html">主页</a>
+        <a href="about.html">关于我</a>
+        <a href="contact.html">联系我</a>
+      </nav>
+    </div>
+  </footer>
+
+</div>
+
+<!-- 背景音乐：默认不播放；切页后会从上次的位置接着播 -->
+<audio id="bgm" src="assets/bgm.mp3" loop preload="auto"></audio>
+
+<script>
+(function () {
+  'use strict';
+
+  /* 跨页面续播：把「是否在播」和「播到第几秒」写进 localStorage，
+     新页面加载后读回来，从上次的位置接着播。
+     注意：静态网页每次跳转都是全新加载，音频无法真的"不断"延续，
+     所以这里做的是"回到同一首歌的同一秒"。 */
+  var KEY  = 'verniy.bgm.state.v1';      // 播放状态与进度
+  var TICK = 'verniy.bgm.tick.v1';       // 进度心跳，仅在播放中写入（切页时用于判断"当时确实在播"）
+  var audio = document.getElementById('bgm');
+  var playBtn = document.getElementById('playBtn');
+  var pauseBtn = document.getElementById('pauseBtn');
+  var note = document.getElementById('audioNote');
+  var noteTimer = null;
+  var resumeAt = 0;          // 切页时需要跳转到的秒数
+  var wantPlaying = false;   // 本次加载是否应该自动续播
+
+  /* ---------- 页脚年份 ---------- */
+  var yearEl = document.getElementById('year');
+  if (yearEl) { yearEl.textContent = new Date().getFullYear(); }
+
+  /* ---------- 顶部提示条 ---------- */
+  function showNote(msg, ms) {
+    if (!note) return;
+    note.textContent = msg;
+    note.classList.add('is-visible');
+    if (noteTimer) clearTimeout(noteTimer);
+    if (ms) noteTimer = setTimeout(hideNote, ms);
+  }
+  function hideNote() {
+    if (!note) return;
+    note.classList.remove('is-visible');
+  }
+
+  /* ---------- 读写状态 ---------- */
+  function readJSON(key) {
+    try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { return null; }
+  }
+  function writeJSON(key, obj) {
+    try { localStorage.setItem(key, JSON.stringify(obj)); } catch (e) {}
+  }
+
+  /* ---------- 按钮状态同步 ---------- */
+  function syncUI(playing) {
+    if (playBtn) {
+      playBtn.classList.toggle('is-active', playing);
+      playBtn.setAttribute('aria-pressed', playing ? 'true' : 'false');
+      playBtn.title = playing ? '背景音乐播放中' : '播放背景音乐';
+    }
+    if (pauseBtn) { pauseBtn.title = playing ? '暂停背景音乐' : '播放背景音乐'; }
+  }
+
+  /* ---------- 保存进度（离开页面 / 暂停 / 播放中定时保存） ---------- */
+  function saveState(playing) {
+    var t = 0;
+    try { t = audio.currentTime || 0; } catch (e) { t = 0; }
+    var atEnd = audio.duration && isFinite(audio.duration) && t >= audio.duration - 0.35;
+    if (atEnd) { t = 0; }                       // 播到结尾时从头开始
+    writeJSON(KEY, { playing: !!playing, time: Math.round(t * 1000) / 1000 });
+    if (playing) { writeJSON(TICK, Date.now()); }
+  }
+
+  /* ---------- 播放 / 暂停 ---------- */
+  function play(opts) {
+    opts = opts || {};
+    // 每次开始播放前都确认进度已同步，避免续播时从头开始
+    if (typeof opts.from === 'number' && isFinite(opts.from) && opts.from > 0.05) {
+      try {
+        if (Math.abs(audio.currentTime - opts.from) > 0.2) { audio.currentTime = opts.from; }
+      } catch (e) {}
+    }
+
+    if (opts.note) { showNote(opts.note, 3600); }
+
+    var p = audio.play();
+    if (p && typeof p.then === 'function') {
+      p.then(function () {
+        wantPlaying = true;
+        saveState(true);
+        syncUI(true);
+      }).catch(function () {
+        /* 浏览器拦截了自动播放（刚打开页面时很常见）：
+           把位置记下来，等用户点一下"播放"再从同一秒继续 */
+        syncUI(false);
+        if (opts.silentBlock) {
+          showNote('浏览器要求先点一下页面才能出声 —— 点右上角「播放」即可从上次的位置继续。', 6000);
+        } else {
+          showNote('浏览器阻止了自动播放，请再点一次「播放」按钮，会从上次的位置继续。', 5200);
+        }
+      });
+    }
+  }
+
+  function pause() {
+    audio.pause();
+    saveState(false);
+    wantPlaying = false;
+    syncUI(false);
+    showNote('背景音乐已暂停（切页后会停在这里，点「播放」从这一秒继续）', 3200);
+  }
+
+  /* ---------- 事件绑定 ---------- */
+  if (playBtn)  { playBtn.addEventListener('click', function () { play({ from: resumeAt }); }); }
+  if (pauseBtn) { pauseBtn.addEventListener('click', pause); }
+
+  audio.addEventListener('play',  function () { wantPlaying = true; syncUI(true); });
+  audio.addEventListener('pause', function () { syncUI(false); });
+  audio.addEventListener('timeupdate', function () {
+    if (!audio.paused) { saveState(true); }
+  });
+  audio.addEventListener('loadedmetadata', function () {
+    // 元数据就绪后再跳进度最稳
+    if (wantPlaying && resumeAt > 0.05) {
+      try {
+        if (Math.abs(audio.currentTime - resumeAt) > 0.2 && resumeAt < audio.duration - 0.5) {
+          audio.currentTime = resumeAt;
+        }
+      } catch (e) {}
+    }
+  });
+
+  /* ---------- 离开页面：记下状态与进度 ---------- */
+  window.addEventListener('pagehide', function () { saveState(!audio.paused); });
+  window.addEventListener('beforeunload', function () { saveState(!audio.paused); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { saveState(!audio.paused); }
+  });
+
+  /* 画面未加载完时先跳到目标位置（loadedmetadata 后再修正一次） */
+  function seekTo(t) {
+    if (!(t > 0.05)) return;
+    try { audio.currentTime = t; } catch (e) {}
+    var once = function () {
+      try {
+        if (audio.duration && isFinite(audio.duration) && t < audio.duration - 0.5 &&
+            Math.abs(audio.currentTime - t) > 0.2) { audio.currentTime = t; }
+      } catch (e) {}
+      audio.removeEventListener('loadedmetadata', once);
+    };
+    audio.addEventListener('loadedmetadata', once);
+  }
+
+  /* ---------- 载入：默认关闭；只有上次确实在播才续播 ---------- */
+  syncUI(false);
+  var savedState = readJSON(KEY);
+  var savedTick  = readJSON(TICK);
+  var stillFresh = typeof savedTick === 'number' && (Date.now() - savedTick) < 30000;
+
+  if (savedState && typeof savedState.time === 'number' && isFinite(savedState.time)) {
+    resumeAt = savedState.time;
+  }
+
+  if (savedState && savedState.playing === true && stillFresh) {
+    wantPlaying = true;
+    seekTo(resumeAt);                     // 续播：从上次那一秒接着播
+    showNote(resumeAt > 0.05
+      ? '接着上次的位置继续播放（已到 ' + Math.floor(resumeAt / 60) + ':' + ('0' + Math.floor(resumeAt % 60)).slice(-2) + '）'
+      : '正在继续播放背景音乐', 4000);
+    play({ from: resumeAt, silentBlock: true });
+  } else if (savedState && savedState.playing === false) {
+    seekTo(resumeAt);                     // 上次是暂停：停在那一秒，下次点播放从这里继续
+  }
+
+  /* ---------- 快捷键：空格播放 / 暂停（焦点不在按钮上时） ---------- */
+  document.addEventListener('keydown', function (e) {
+    if (e.code !== 'Space' && e.key !== ' ') return;
+    var t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (t && t.closest && t.closest('button, a')) return;
+    e.preventDefault();
+    if (audio.paused) { play({ from: resumeAt }); } else { pause(); }
+  });
+
+})();
+</script>
+</body>
+</html>
