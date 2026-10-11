@@ -133,6 +133,7 @@
     <div class="brand">本地发布器 · <span>verniy</span></div>
     <span class="chip" id="gitChip"><span class="dot-live"></span><span id="gitText">读取 git 状态…</span></span>
     <div class="spacer"></div>
+    <button class="btn ghost" id="btnSyncNav" type="button">同步上下篇</button>
     <button class="btn ghost" id="btnReload" type="button">重新载入</button>
     <button class="btn" id="btnNew" type="button">写新文章</button>
     <button class="btn primary" id="btnPublish" type="button">发布到线上</button>
@@ -496,6 +497,32 @@
     $("preview").innerHTML = '<div class="empty">填好标题和正文后，点「刷新预览」看效果。</div>';
   }
 
+  /* ---------------- 上一篇 / 下一篇 ---------------- */
+  // 把接口返回的 nav 结果转成一句提示
+  function navNote(j) {
+    if (!j || typeof j.navTotal === "undefined") return "";
+    if (!j.navTotal) return "";
+    if (j.navChanged && j.navChanged.length) {
+      return "，同时更新了 " + j.navChanged.length + " 篇的上一篇/下一篇";
+    }
+    return "";
+  }
+
+  function syncNav() {
+    $("btnSyncNav").disabled = true;
+    api("POST", "/api/sync-nav", {}).then(function (j) {
+      var n = j.changed ? j.changed.length : 0;
+      say("ok", "上一篇/下一篇已同步：共 " + j.total + " 篇文章，" +
+                (n ? "更新了 " + n + " 篇（" + j.changed.join("、") + "）" : "都是最新的，无需改动") +
+                "。别忘了点「发布到线上」。");
+      loadGit();
+    }).catch(function (e) {
+      say("err", "同步失败：" + e.message);
+    }).finally(function () {
+      $("btnSyncNav").disabled = false;
+    });
+  }
+
   /* ---------------- 保存 ---------------- */
   /* target: "post" 存为正式文章（上首页） / "draft" 存进草稿箱 */
   function save(target) {
@@ -534,7 +561,7 @@
         ? "已存进草稿箱：" + j.path + "（不上海首页，也不会被推送部署）"
         : "已保存到首页：" + j.path +
           (j.totalPosts ? "，首页现有 " + j.totalPosts + " 篇文章" : "") +
-          "。记得点「发布到线上」。");
+          navNote(j) + "。记得点「发布到线上」。");
       return loadPosts();
     }).catch(function (e) {
       if (e && e.message && e.message !== "no title" && e.message !== "no body") {
@@ -571,7 +598,8 @@
     api("POST", "/api/delete", { file: file, where: isDraft ? "drafts" : "posts" }).then(function (j) {
       say("ok", "已删除" + (isDraft ? "草稿" : "文章") + "《" + (j.title || title) + "》" +
                 (j.cardRemoved ? "，首页卡片也已移除" : "") +
-                "，首页现有 " + j.totalPosts + " 篇文章。别忘了点「发布到线上」。");
+                "，首页现有 " + j.totalPosts + " 篇文章" +
+                navNote(j) + "。别忘了点「发布到线上」。");
       newPost();
       loadPosts();
       loadGit();
@@ -735,6 +763,7 @@
   $("btnPublish").addEventListener("click", publish);
   $("btnPublish2").addEventListener("click", publish);
   $("btnReload").addEventListener("click", function () { loadPosts(); loadImages(); loadGit(); });
+  $("btnSyncNav").addEventListener("click", syncNav);
   $("imgInput").addEventListener("change", function (e) { uploadFiles(e.target.files); e.target.value = ""; });
 
   window.addEventListener("beforeunload", function (e) {

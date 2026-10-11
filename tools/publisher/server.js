@@ -532,6 +532,70 @@ function syncCard(meta, shouldBeListed) {
   return countCards(read(INDEX_FILE));
 }
 
+/* ============================================================
+ * 上一篇 / 下一篇：自动关联
+ *
+ * 只改写每篇文章里 <nav class="post-nav"> 这一块，
+ * 正文和其它任何内容都不碰（测试里会逐字节校验这一点）。
+ * 顺序按文件名编号：001 最早，编号越大越新。
+ *   上一篇 = 更早的一篇（编号小）    下一篇 = 更新的一篇（编号大）
+ * ============================================================ */
+
+/** 只匹配导航块本身，不碰它前面的注释 */
+const NAV_RE = /[ \t]*<nav class="post-nav"[\s\S]*?<\/nav>/;
+
+/** 已发布文章，按编号升序 */
+function orderedPosts() {
+  return listDir(POSTS_DIR, "post")
+    .map((p) => Object.assign({}, p, {
+      num: Number((/^(\d+)-/.exec(p.file) || [, "0"])[1]) || 0,
+    }))
+    .sort((a, b) => (a.num - b.num) || a.file.localeCompare(b.file));
+}
+
+/** 生成某一篇的导航块 */
+function navBlockFor(file, list) {
+  const i = list.findIndex((p) => p.file === file);
+  const prev = i > 0 ? list[i - 1] : null;
+  const next = i >= 0 && i < list.length - 1 ? list[i + 1] : null;
+
+  const link = (p, isNext) => `      <a${isNext ? ' class="next"' : ""} href="${escapeHtml(p.file)}">
+        <span class="dir">${isNext ? "下一篇 &rarr;" : "&larr; 上一篇"}</span>
+        <span class="ttl">${escapeHtml(p.title || p.file)}</span>
+      </a>`;
+
+  const none = (text, isNext) =>
+    `      <span class="is-disabled${isNext ? " next" : ""}">${text}</span>`;
+
+  return `    <nav class="post-nav" aria-label="文章导航">
+${prev ? link(prev, false) : none("已经是第一篇了", false)}
+${next ? link(next, true) : none("已经是最后一篇了", true)}
+    </nav>`;
+}
+
+/** 只替换某一篇文章的导航块；返回是否真的改动了 */
+function applyNav(file, list) {
+  const target = path.join(POSTS_DIR, file);
+  if (!fs.existsSync(target)) return false;
+  const html = read(target);
+  const m = NAV_RE.exec(html);
+  if (!m) return false;                       // 老文章没有导航块就跳过，不硬塞
+  const out = html.slice(0, m.index) + navBlockFor(file, list) + html.slice(m.index + m[0].length);
+  if (out === html) return false;
+  fs.writeFileSync(target, out, "utf-8");
+  return true;
+}
+
+/** 同步所有已发布文章的上一篇/下一篇 */
+function syncAllNav() {
+  const list = orderedPosts();
+  const changed = [];
+  for (const p of list) {
+    if (applyNav(p.file, list)) changed.push(p.file);
+  }
+  return { total: list.length, changed };
+}
+
 /** 找出首页里所有文章卡片的边界（只认真正的卡片，跳过注释里的示例文字）。
  *  必须跳过注释，否则正则可能从注释里的 <li class="post"> 开始匹配，
  *  一路吃掉后面的 <ul class="post-list"> 和开头标签。 */
@@ -751,12 +815,17 @@ const server = http.createServer(async (req, res) => {
       // 首页卡片与状态对齐：正式文章要有卡片（没有就插、有就更新），草稿则摘掉卡片
       const total = syncCard(meta, !asDraft);
 
+      // 上一篇/下一篇：新文章加入、草稿进退、标题改动都会影响相邻文章，统一重算一遍
+      const nav = syncAllNav();
+
       return json(res, 200, {
         ok: true, file, isNew,
         where: asDraft ? "drafts" : "posts",
         path: (asDraft ? "drafts/" : "posts/") + file,
         draft: asDraft,
         totalPosts: total,
+        navTotal: nav.total,
+        navChanged: nav.changed,
       });
     }
 
@@ -816,12 +885,28 @@ const server = http.createServer(async (req, res) => {
       fs.unlinkSync(target);
       const total = countCards(read(INDEX_FILE));
 
+      // 删掉一篇后，左右邻居的上一篇/下一篇要接上
+      const nav = syncAllNav();
+
       return json(res, 200, {
         ok: true,
         file, where,
         title: removedTitle,
         cardRemoved: hadCard,   // 草稿本来就不在首页，这里是 false 属正常
         totalPosts: total,
+        navTotal: nav.total,
+        navChanged: nav.changed,
+      });
+    }
+
+    /* ---------- 手动同步上一篇 / 下一篇 ---------- */
+    if (req.method === "POST" && p === "/api/sync-nav") {
+      const nav = syncAllNav();
+      return json(res, 200, {
+        ok: true,
+        total: nav.total,
+        changed: nav.changed,
+        posts: orderedPosts().map((x) => ({ file: x.file, title: x.title })),
       });
     }
 
@@ -892,6 +977,15 @@ server.listen(PORT, HOST, () => {
   console.log("  站点根目录 : " + ROOT);
   console.log("  已发布目录 : posts/");
   console.log("  草稿箱目录 : drafts/   (已在 .gitignore 中，不会被推送部署)");
+  // 启动时同步一次上一篇/下一篇，让已有文章立刻拿到正确的导航
+  try {
+    const nav = syncAllNav();
+    console.log("  上一篇/下一篇 : 共 " + nav.total + " 篇" +
+      (nav.changed.length ? "，已更新 " + nav.changed.length + " 篇： " + nav.changed.join("、")
+                          : "，均为最新"));
+  } catch (e) {
+    console.log("  上一篇/下一篇 : 同步失败 " + e.message);
+  }
   console.log("  样式来源   : " + path.relative(ROOT, BASE_ARTICLE) +
     (fs.existsSync(BASE_ARTICLE) ? "" : "   ← 文件不存在！"));
   if (addedIgnore) console.log("  注意：刚刚把 drafts/ 写进了 .gitignore，记得提交这个改动");
