@@ -228,7 +228,12 @@
             <button type="button" data-md="code">代码块</button>
             <button type="button" data-md="img">插图</button>
           </div>
-          <textarea id="body" placeholder="在这里写正文…"></textarea>
+          <textarea id="body" placeholder="在这里写正文…
+
+## 小标题
+**加粗**、- 列表、> 引用
+
+换行规则：回车就换行；空一行分成新段落；想多留几行空白，就多按几次回车。"></textarea>
         </div>
 
         <div class="btn-row">
@@ -328,6 +333,10 @@
       .replace(/`([^`]+)`/g, "<code>$1</code>");
   }
 
+  /* 空行占位：连续两个以上空行时，多出来的空行用这个保留下来，
+     让"空几行"就真的空几行。用内联样式，不依赖文章里的 CSS。 */
+  var BLANK = '<p style="margin:0"><br></p>';
+
   function mdToHtml(md) {
     var out = [];
     var lines = String(md).replace(/\r\n/g, "\n").split("\n");
@@ -352,7 +361,8 @@
       if (/^\s*>\s?/.test(line)) {
         var q = [];
         while (i < lines.length && /^\s*>\s?/.test(lines[i])) { q.push(lines[i].replace(/^\s*>\s?/, "")); i++; }
-        out.push("<blockquote><p>" + mdInline(esc(q.join(" "))) + "</p></blockquote>");
+        // 引用里按回车也换行
+        out.push("<blockquote><p>" + q.map(function (x) { return mdInline(esc(x)); }).join("<br>") + "</p></blockquote>");
         continue;
       }
       if (/^\s*[-*+]\s+/.test(line)) {
@@ -367,14 +377,23 @@
         out.push("<ol>" + ol.map(function (x) { return "<li>" + mdInline(esc(x)) + "</li>"; }).join("") + "</ol>");
         continue;
       }
-      if (!line.trim()) { i++; continue; }
+      // 空行：第 1 个只用来分段，第 2 个起按作者打的空行数保留
+      if (!line.trim()) {
+        var blanks = 0;
+        while (i < lines.length && !lines[i].trim()) { blanks++; i++; }
+        if (out.length && i < lines.length) {
+          for (var b = 1; b < blanks; b++) out.push(BLANK);
+        }
+        continue;
+      }
       var para = [];
       while (i < lines.length && lines[i].trim() &&
              !/^\s*(#{1,4}\s|>|[-*+]\s|\d+\.\s|---|\*\*\*)/.test(lines[i]) &&
              lines[i].trim().indexOf(FENCE) !== 0) {
         para.push(lines[i]); i++;
       }
-      out.push("<p>" + mdInline(esc(para.join(" "))) + "</p>");
+      // 段落内按回车就换行（不再用空格把两行粘成一行）
+      out.push("<p>" + para.map(function (x) { return mdInline(esc(x)); }).join("<br>") + "</p>");
     }
     return out.join("\n        ");
   }
@@ -691,11 +710,20 @@
   $("fmtSeg").addEventListener("click", function (ev) {
     var b = ev.target.closest("button[data-fmt]");
     if (!b) return;
+    // 防手滑：已有文章的正文是 HTML，切成 Markdown 后保存会把标签当普通文字转义，正文就毁了
+    if (b.dataset.fmt === "md" && state.format === "html" &&
+        /<\/(p|h[1-6]|ul|ol|li|pre|blockquote|div)>/i.test($("body").value)) {
+      if (!confirm(
+        "当前正文是 HTML 格式（多半是已有文章）。\n\n" +
+        "切换到 Markdown 后，保存时会把 HTML 标签当成普通文字转义，正文内容会被破坏。\n" +
+        "已有文章建议一直用 HTML 模式编辑。\n\n" +
+        "确定要切换到 Markdown 吗？")) return;
+    }
     state.format = b.dataset.fmt;
     Array.prototype.forEach.call($("fmtSeg").children, function (x) { x.classList.toggle("on", x === b); });
     say("info", state.format === "md"
-      ? "Markdown 模式：用 ## 标题、**加粗**、- 列表"
-      : "HTML 模式：直接写 HTML 标签");
+      ? "Markdown 模式：回车即换行；空一行分段；多空几行就多留几行空白"
+      : "HTML 模式：直接写 HTML 标签，换行请用 <br>");
   });
 
   /* ---------------- 绑定 ---------------- */
