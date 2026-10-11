@@ -343,7 +343,11 @@
       body: body ? JSON.stringify(body) : undefined
     }).then(function (r) {
       return r.json().then(function (j) {
-        if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+        if (!r.ok) {
+          var err = new Error(j.error || ("HTTP " + r.status));
+          err.detail = j.output || "";   // 发布失败时服务端会带回 git 的原始输出
+          throw err;
+        }
         return j;
       });
     });
@@ -614,7 +618,10 @@
       (isDraft
         ? "草稿只在你自己电脑上，删掉就没了（git 里没有备份）。"
         : "会同时删掉文章页和首页上的那张卡片。\n本地文件可从 git 历史找回；推送之后只能去 GitHub 历史里恢复。") +
-      (isDraft ? "" : "\n\n注意：删除只改本地。\n要点「发布到线上」，网站上才会真的看不到这篇。")
+      (isDraft
+        ? ""
+        : "\n\n删掉后会【自动发布到线上】，网站上随即看不到这篇" +
+          "（其它还没发布的改动也会一起推上去）。")
     );
     if (!ok) return;
 
@@ -622,28 +629,31 @@
     $("saveHint").textContent = "删除中…";
 
     api("POST", "/api/delete", { file: file, where: isDraft ? "drafts" : "posts" }).then(function (j) {
-      say("ok", "已删除" + (isDraft ? "草稿" : "文章") + "《" + (j.title || title) + "》" +
-                (j.cardRemoved ? "，首页卡片也已移除" : "") +
-                "，首页现有 " + j.totalPosts + " 篇文章" +
-                navNote(j) + "。别忘了点「发布到线上」。");
+      var t = j.title || title;
       newPost();
       loadPosts();
-      loadGit();
       $("step1").classList.remove("done");
       $("step2").classList.remove("done");
 
-      // 删除是最容易"以为已经生效"的操作：直接问一次要不要立刻发布
-      if (!isDraft) {
-        setTimeout(function () {
-          if (confirm("已从本地删除《" + (j.title || title) + "》。\n\n" +
-                      "现在要发布到线上吗？\n\n" +
-                      "选「取消」的话：网站上还是能看到这篇文章（以及首页那张卡片），" +
-                      "直到你手动点右上角「发布到线上」。")) {
-            $("commitMsg").value = "删除文章：" + (j.title || title);
-            publish(true);
-          }
-        }, 150);
+      // 草稿不发布；删文章则自动提交并推送，网站上立刻跟着变
+      if (isDraft) {
+        say("ok", "已删除草稿《" + t + "》。");
+        return loadGit();
       }
+
+      say("info", "已从本地删除《" + t + "》" +
+                  (j.cardRemoved ? "，首页卡片已移除" : "") +
+                  "，首页现有 " + j.totalPosts + " 篇文章" + navNote(j) +
+                  "。正在自动发布到线上…");
+      return publish(true, "删除文章：" + t).then(function (ok) {
+        if (ok === false) {
+          say("err", "已从本地删除《" + t + "》，但发布没有完成 —— 网站上还能看到它。" +
+                     "请看下方发布日志，然后点「立即发布」重试。");
+        } else {
+          say("ok", "已删除《" + t + "》并发布到线上，Cloudflare 大约 1 分钟内完成部署" +
+                    " —— 稍后刷新网站，这篇就不见了。");
+        }
+      });
     }).catch(function (e) {
       say("err", "删除失败：" + e.message);
     }).finally(function () {
@@ -652,30 +662,39 @@
     });
   }
 
-  /* ---------------- 发布 ---------------- */
-  function publish(skipConfirm) {
-    var msg = $("commitMsg").value.trim() || "更新：发布文章";
-    if (skipConfirm !== true && !confirm("确认提交并推送到 GitHub？\n\n" + msg + "\n\n推送后 Cloudflare 会自动部署。")) return;
+  /* ---------------- 发布 ----------------
+     skipConfirm: 内部自动发布时跳过确认
+     messageOverride: 指定提交信息（如"删除文章：xxx"）
+     返回 Promise<true|false>，供删除等自动流程判断成败 */
+  function publish(skipConfirm, messageOverride) {
+    var msg = String(messageOverride || $("commitMsg").value || "").trim() || "更新：发布文章";
+    if (skipConfirm !== true && !confirm("确认提交并推送到 GitHub？\n\n" + msg + "\n\n推送后 Cloudflare 会自动部署。")) {
+      return Promise.resolve(false);
+    }
+    $("commitMsg").value = msg;   // 让输入框如实反映这次提交了什么
     $("btnPublish").disabled = true;
     $("btnPublish2").disabled = true;
     $("publishHint").textContent = "推送中…";
     var log = $("publishLog");
     log.hidden = false;
-    log.textContent = "git add -A\ngit commit\ngit push\n";
+    log.textContent = "git add -A\ngit commit -m \"" + msg + "\"\ngit push\n";
 
-    api("POST", "/api/publish", { message: msg }).then(function (j) {
+    return api("POST", "/api/publish", { message: msg }).then(function (j) {
       log.textContent += "\n" + (j.output || "(无输出)");
       $("publishHint").textContent = "已推送，等 Cloudflare 部署";
       $("step2").classList.add("done");
       say("ok", "发布成功，Cloudflare 大约 1 分钟内完成部署。");
-      return loadGit();
+      return true;
     }).catch(function (e) {
-      log.textContent += "\n发布失败：" + e.message;
+      var detail = (e && e.detail) ? "\n" + e.detail : "";
+      log.textContent += "\n发布失败：" + e.message + detail;
       $("publishHint").textContent = "发布失败";
       say("err", "发布失败：" + e.message + "（详情见下方日志）");
+      return false;
     }).finally(function () {
       $("btnPublish").disabled = false;
       $("btnPublish2").disabled = false;
+      loadGit();   // 无论成败都刷新状态：推送失败时横幅要留在屏幕上提醒
     });
   }
 
@@ -688,12 +707,20 @@
         return;
       }
       var ban = $("unpubBanner");
-      if (j.git.dirty > 0) {
+      var dirtyN = Number(j.git.dirty) || 0;
+      var aheadN = parseInt(j.git.ahead, 10) || 0;   // "?" 或缺失都当 0
+      if (dirtyN > 0 || aheadN > 0) {
+        var head = [];
+        if (dirtyN > 0) head.push(dirtyN + " 个改动还没发布到线上");
+        if (aheadN > 0) head.push(aheadN + " 个提交还没推送到线上");
         chip.className = "chip warn";
-        txt.textContent = j.git.branch + " · " + j.git.dirty + " 个改动未发布";
+        txt.textContent = j.git.branch + " · " +
+          (aheadN > 0 ? aheadN + " 个提交未推送" : dirtyN + " 个改动未发布");
         ban.hidden = false;
-        $("unpubTitle").textContent = "有 " + j.git.dirty + " 个改动还没发布到线上";
-        $("unpubDesc").textContent = "网站现在还是旧版本 —— 删除、新增、修改都要点「发布到线上」才会生效。";
+        $("unpubTitle").textContent = head.join("，");
+        $("unpubDesc").textContent = (aheadN > 0 && dirtyN === 0)
+          ? "本地已经提交，但推送没成功（多半是 github.com 网络问题）。再点一次「立即发布」重试即可 —— 网站现在还是旧版本。"
+          : "网站现在还是旧版本 —— 删除、新增、修改都要点「发布到线上」才会生效。";
       } else {
         chip.className = "chip ok";
         txt.textContent = j.git.branch + " · 已与线上同步";
