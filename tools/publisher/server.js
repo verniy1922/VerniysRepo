@@ -187,11 +187,14 @@ function renderArticle(meta, bodyHtml) {
       </nav>
 
       <div class="audio-group">
-        <button id="playBtn" class="btn btn-compact" type="button" aria-pressed="false" title="播放背景音乐">
-          <span aria-hidden="true">&#9654;</span><span class="label">播放</span>
+        <button id="playBtn" class="btn btn-compact" type="button" aria-pressed="false" aria-label="播放背景音乐" title="播放背景音乐">
+          <span class="ico ico-play" aria-hidden="true"><svg viewBox="0 0 16 16" width="13" height="13"><path d="M4.5 2.6v10.8c0 .5.55.8.98.53l8.6-5.4a.64.64 0 0 0 0-1.06l-8.6-5.4a.64.64 0 0 0-.98.53z" fill="currentColor"/></svg></span>
+          <span class="ico ico-pause" aria-hidden="true"><svg viewBox="0 0 16 16" width="13" height="13"><rect x="3.4" y="2.4" width="3.6" height="11.2" rx="1.1" fill="currentColor"/><rect x="9" y="2.4" width="3.6" height="11.2" rx="1.1" fill="currentColor"/></svg></span>
+          <span class="label">播放 / 暂停</span>
         </button>
-        <button id="pauseBtn" class="btn btn-compact" type="button" title="暂停背景音乐">
-          <span aria-hidden="true">&#10073;&#10073;</span><span class="label">暂停</span>
+        <button id="nextBtn" class="btn btn-compact" type="button" aria-label="下一首" title="下一首">
+          <span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" width="13" height="13"><path d="M3.2 3.1v9.8c0 .5.55.8.98.53l7.3-4.9a.64.64 0 0 0 0-1.06l-7.3-4.9a.64.64 0 0 0-.98.53z" fill="currentColor"/><rect x="11.9" y="2.6" width="1.9" height="10.8" rx=".9" fill="currentColor"/></svg></span>
+          <span class="label">下一首</span>
         </button>
       </div>
     </div>
@@ -255,23 +258,35 @@ ${tagSpans}
 </div>
 
 <!-- 背景音乐：与其它页面共用播放状态，从文章页回主页时音乐不会断 -->
-<audio id="bgm" src="../assets/bgm.mp3" loop preload="auto"></audio>
+<audio id="bgm" src="../assets/bgm.mp3" preload="auto"></audio>
 
 <script>
 (function () {
   'use strict';
 
-  /* 跨页面续播：把「是否在播」和「播到第几秒」写进 localStorage，
-     新页面加载后读回来，从上次的位置接着播。 */
-  var KEY  = 'verniy.bgm.state.v1';
-  var TICK = 'verniy.bgm.tick.v1';
+  /* 跨页面续播：把「第几首 / 是否在播 / 播到第几秒」写进 localStorage，
+     新页面加载后读回来，从上次的位置接着播。
+     注意：静态网页每次跳转都是全新加载，音频无法真的"不断"延续，
+     所以这里做的是"回到同一首歌的同一秒"。 */
+  var KEY  = 'verniy.bgm.state.v1';      // 播放状态、进度与当前第几首
+  var TICK = 'verniy.bgm.tick.v1';       // 进度心跳，仅在播放中写入（切页时用于判断"当时确实在播"）
   var audio = document.getElementById('bgm');
   var playBtn = document.getElementById('playBtn');
-  var pauseBtn = document.getElementById('pauseBtn');
+  var nextBtn = document.getElementById('nextBtn');
   var note = document.getElementById('audioNote');
   var noteTimer = null;
-  var resumeAt = 0;
-  var wantPlaying = false;
+  var idx = 0;               // 当前播第几首
+  var resumeAt = 0;          // 切页时需要跳转到的秒数
+  var wantPlaying = false;   // 本次加载是否应该自动续播
+
+  /* 歌单：目前两首。一首放完自动接下一首，两首之间循环不断。
+     资源目录从 <audio> 的 src 推断（主页是 assets/，文章页是 ../assets/），
+     所以各页面共用同一段代码；以后加歌就往数组里加一行，并把文件放进 assets/。 */
+  var A = String(audio.getAttribute('src') || 'assets/bgm.mp3').replace(/[^/]*$/, '');
+  var PLAYLIST = [
+    { file: A + 'bgm.mp3',  name: '歌唱动荡的青春' },
+    { file: A + 'bgm2.mp3', name: '山楂树（乌拉尔的花楸树）' }
+  ];
 
   var yearEl = document.getElementById('year');
   if (yearEl) { yearEl.textContent = new Date().getFullYear(); }
@@ -292,13 +307,37 @@ ${tagSpans}
     try { localStorage.setItem(key, JSON.stringify(obj)); } catch (e) {}
   }
 
+  /* ---------- 切歌 ---------- */
+  // 切到第 i 首（自动绕回 0/1），进度归零并记下来
+  function useTrack(i, noteText) {
+    idx = ((i % PLAYLIST.length) + PLAYLIST.length) % PLAYLIST.length;
+    resumeAt = 0;
+    writeJSON(KEY, { playing: !audio.paused, time: 0, idx: idx });
+    if (audio.getAttribute('src') !== PLAYLIST[idx].file) {
+      audio.setAttribute('src', PLAYLIST[idx].file);
+      try { audio.load(); } catch (e) {}
+    } else {
+      try { audio.currentTime = 0; } catch (e) {}
+    }
+    if (noteText) { showNote(noteText, 3600); }
+  }
+
+  /* 下一首：点按钮，或一首放完自动接上（两首循环） */
+  function next(auto) {
+    var i = (idx + 1) % PLAYLIST.length;
+    useTrack(i, (auto ? '接着循环播放：' : '下一首：') + PLAYLIST[i].name);
+    play({});
+  }
+
+  /* ---------- 按钮状态同步 ---------- */
   function syncUI(playing) {
     if (playBtn) {
       playBtn.classList.toggle('is-active', playing);
       playBtn.setAttribute('aria-pressed', playing ? 'true' : 'false');
-      playBtn.title = playing ? '背景音乐播放中' : '播放背景音乐';
+      playBtn.setAttribute('aria-label', playing ? '暂停背景音乐' : '播放背景音乐');
+      playBtn.title = (playing ? '暂停背景音乐 · ' : '播放背景音乐 · ') + PLAYLIST[idx].name;
     }
-    if (pauseBtn) { pauseBtn.title = playing ? '暂停背景音乐' : '播放背景音乐'; }
+    if (nextBtn) { nextBtn.title = '下一首：' + PLAYLIST[(idx + 1) % PLAYLIST.length].name; }
   }
 
   function saveState(playing) {
@@ -306,7 +345,7 @@ ${tagSpans}
     try { t = audio.currentTime || 0; } catch (e) { t = 0; }
     var atEnd = audio.duration && isFinite(audio.duration) && t >= audio.duration - 0.35;
     if (atEnd) { t = 0; }
-    writeJSON(KEY, { playing: !!playing, time: Math.round(t * 1000) / 1000 });
+    writeJSON(KEY, { playing: !!playing, time: Math.round(t * 1000) / 1000, idx: idx });
     if (playing) { writeJSON(TICK, Date.now()); }
   }
 
@@ -343,11 +382,17 @@ ${tagSpans}
     showNote('背景音乐已暂停（切页后会停在这里，点「播放」从这一秒继续）', 3200);
   }
 
-  if (playBtn)  { playBtn.addEventListener('click', function () { play({ from: resumeAt }); }); }
-  if (pauseBtn) { pauseBtn.addEventListener('click', pause); }
+  if (playBtn) {
+    playBtn.addEventListener('click', function () {
+      if (audio.paused) { play({ from: resumeAt }); } else { pause(); }
+    });
+  }
+  if (nextBtn) { nextBtn.addEventListener('click', function () { next(false); }); }
 
   audio.addEventListener('play',  function () { wantPlaying = true; syncUI(true); });
   audio.addEventListener('pause', function () { syncUI(false); });
+  // 一首放完：自动接下一首（两首之间循环）
+  audio.addEventListener('ended', function () { next(true); });
   audio.addEventListener('timeupdate', function () {
     if (!audio.paused) { saveState(true); }
   });
@@ -380,14 +425,19 @@ ${tagSpans}
     audio.addEventListener('loadedmetadata', once);
   }
 
-  syncUI(false);
   var savedState = readJSON(KEY);
   var savedTick  = readJSON(TICK);
   var stillFresh = typeof savedTick === 'number' && (Date.now() - savedTick) < 30000;
 
+  // 回到上次那一首（第一首就是 <audio> 的默认 src，不用动）
+  if (savedState && typeof savedState.idx === 'number' && PLAYLIST[savedState.idx]) {
+    idx = savedState.idx;
+    if (idx !== 0) { audio.setAttribute('src', PLAYLIST[idx].file); }
+  }
   if (savedState && typeof savedState.time === 'number' && isFinite(savedState.time)) {
     resumeAt = savedState.time;
   }
+  syncUI(false);
 
   if (savedState && savedState.playing === true && stillFresh) {
     wantPlaying = true;
