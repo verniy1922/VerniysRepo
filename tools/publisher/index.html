@@ -144,11 +144,26 @@
   <div>
     <section class="panel">
       <div class="panel-h">
-        <h2>已有文章</h2>
+        <h2>已发布</h2>
         <span style="flex:1"></span>
         <span class="sub" id="postCount">—</span>
       </div>
       <ul class="plist" id="postList"></ul>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h">
+        <h2>草稿箱</h2>
+        <span style="flex:1"></span>
+        <span class="sub" id="draftCount">—</span>
+      </div>
+      <ul class="plist" id="draftList"></ul>
+      <div class="panel-b" style="padding-top:0">
+        <div class="empty" style="font-size:12px;line-height:1.6">
+          存在 <code>drafts/</code> 目录，已加入 <code>.gitignore</code>，
+          不会被推送，也不会部署到线上。
+        </div>
+      </div>
     </section>
 
     <section class="panel">
@@ -168,7 +183,7 @@
       <div class="panel-h">
         <h2 id="editorTitle">写新文章</h2>
         <span style="flex:1"></span>
-        <span class="sub" id="fileHint">保存后会自动加入首页</span>
+        <span class="sub" id="fileHint">保存到首页后，再点右上角「发布到线上」</span>
       </div>
       <div class="panel-b">
 
@@ -216,15 +231,16 @@
           <textarea id="body" placeholder="在这里写正文…"></textarea>
         </div>
 
-        <label class="chip" style="cursor:pointer;margin-bottom:14px">
-          <input type="checkbox" id="draft"> 存为草稿（不显示在首页）
-        </label>
-
         <div class="btn-row">
-          <button class="btn primary" id="btnSave" type="button">保存文章</button>
+          <button class="btn primary" id="btnSavePost" type="button">保存到首页</button>
+          <button class="btn" id="btnSaveDraft" type="button">存为草稿</button>
           <button class="btn" id="btnPreview" type="button">刷新预览</button>
           <button class="btn danger" id="btnDelete" type="button" hidden>删除这篇</button>
           <span id="saveHint" style="color:var(--text-faint);font-size:12.5px"></span>
+        </div>
+        <div class="empty" style="font-size:12px;margin-top:8px">
+          「保存到首页」= 让它在网站上出现；「存为草稿」= 只放进草稿箱，不上首页。
+          两者都只改本地，最后都要点右上角「发布到线上」才会更新网站。
         </div>
       </div>
     </section>
@@ -263,7 +279,7 @@
   "use strict";
 
   var $ = function (id) { return document.getElementById(id); };
-  var state = { file: null, format: "md", images: [] };
+  var state = { file: null, where: "posts", format: "md", images: [], posts: [], drafts: [] };
   var FENCE = String.fromCharCode(96, 96, 96); // 三个反引号
 
   function today() {
@@ -385,49 +401,60 @@
       '<div class="pbody">' + html + "</div>";
   }
 
-  /* ---------------- 文章列表 ---------------- */
-  function loadPosts() {
-    return api("GET", "/api/posts").then(function (j) {
-      var ul = $("postList");
-      ul.innerHTML = "";
-      $("postCount").textContent = j.posts.length + " 篇";
-      if (!j.posts.length) {
-        ul.innerHTML = '<li><div class="empty" style="padding:10px 14px">还没有文章</div></li>';
-        return;
-      }
-      j.posts.slice().reverse().forEach(function (p) {
-        var li = document.createElement("li");
-        var b = document.createElement("button");
-        b.type = "button";
-        b.innerHTML = '<span class="t">' + esc(p.title || p.file) + '</span><span class="d">' +
-                      esc(p.date || "") + " · " + esc(p.file) + "</span>";
-        b.addEventListener("click", function () { loadPost(p.file); });
-        li.appendChild(b);
-        ul.appendChild(li);
-      });
+  /* ---------------- 列表：已发布 + 草稿箱 ---------------- */
+  function renderList(ulId, countId, items, emptyText) {
+    var ul = $(ulId);
+    ul.innerHTML = "";
+    $(countId).textContent = items.length + (ulId === "draftList" ? " 篇草稿" : " 篇");
+    if (!items.length) {
+      ul.innerHTML = '<li><div class="empty" style="padding:10px 14px">' + emptyText + "</div></li>";
+      return;
+    }
+    items.slice().reverse().forEach(function (p) {
+      var li = document.createElement("li");
+      var b = document.createElement("button");
+      b.type = "button";
+      b.innerHTML = '<span class="t">' + esc(p.title || p.file) + '</span><span class="d">' +
+                    esc(p.date || "") + " · " + esc(p.file) + "</span>";
+      b.addEventListener("click", function () { loadPost(p.file, p.kind === "draft" ? "drafts" : "posts"); });
+      li.appendChild(b);
+      ul.appendChild(li);
     });
   }
 
-  function loadPost(file) {
-    return api("GET", "/api/read?file=" + encodeURIComponent(file)).then(function (j) {
+  function loadPosts() {
+    return api("GET", "/api/posts").then(function (j) {
+      state.posts = j.posts || [];
+      state.drafts = j.drafts || [];
+      renderList("postList", "postCount", state.posts, "还没有已发布的文章");
+      renderList("draftList", "draftCount", state.drafts, "草稿箱是空的");
+    });
+  }
+
+  function loadPost(file, where) {
+    var q = "/api/read?file=" + encodeURIComponent(file) + "&where=" + (where || "posts");
+    return api("GET", q).then(function (j) {
       state.file = j.file;
+      state.where = j.where || "posts";
       $("title").value = j.title;
       $("date").value = j.date || today();
       $("category").value = j.category || "随笔";
       $("tags").value = (j.tags || []).join(", ");
       $("excerpt").value = "";
       $("body").value = j.body;
-      $("editorTitle").textContent = "编辑：" + j.file;
-      $("fileHint").textContent = "更新后会自动同步首页卡片";
-      $("commitMsg").value = "更新文章：" + j.title;
+      $("editorTitle").textContent = (j.isDraft ? "编辑草稿：" : "编辑文章：") + j.file;
+      $("fileHint").textContent = j.isDraft
+        ? "这是草稿，点「保存到首页」才会出现在首页"
+        : "改动会同步更新首页卡片";
+      $("commitMsg").value = (j.isDraft ? "更新草稿：" : "更新文章：") + j.title;
       $("saveHint").textContent = "";
-      $("draft").checked = false;
-      $("btnDelete").hidden = false;      // 编辑已有文章时才允许删除
+      $("btnDelete").hidden = false;      // 编辑已有内容时才允许删除
       state.format = "html";
       Array.prototype.forEach.call($("fmtSeg").children, function (x) {
         x.classList.toggle("on", x.dataset.fmt === "html");
       });
-      say("info", "已载入 " + j.file + "（已有文章按 HTML 编辑，避免 Markdown 转换改变排版）");
+      say("info", "已载入" + (j.isDraft ? "草稿 " : " ") + j.file +
+                  "（已有内容按 HTML 编辑，避免 Markdown 转换改变排版）");
       refreshPreview();
       window.scrollTo({ top: 0, behavior: "smooth" });
     }).catch(function (e) { say("err", "读取失败：" + e.message); });
@@ -435,6 +462,7 @@
 
   function newPost() {
     state.file = null;
+    state.where = "posts";
     $("title").value = "";
     $("date").value = today();
     $("category").value = "随笔";
@@ -442,41 +470,52 @@
     $("excerpt").value = "";
     $("body").value = "";
     $("editorTitle").textContent = "写新文章";
-    $("fileHint").textContent = "保存后会自动加入首页";
+    $("fileHint").textContent = "保存到首页后，再点右上角「发布到线上」";
     $("commitMsg").value = "";
     $("saveHint").textContent = "";
-    $("draft").checked = false;
     $("btnDelete").hidden = true;       // 新文章还没落盘，没有可删的
     $("preview").innerHTML = '<div class="empty">填好标题和正文后，点「刷新预览」看效果。</div>';
   }
 
   /* ---------------- 保存 ---------------- */
-  function save() {
+  /* target: "post" 存为正式文章（上首页） / "draft" 存进草稿箱 */
+  function save(target) {
     if (!$("title").value.trim()) { say("err", "标题不能为空"); return Promise.reject(new Error("no title")); }
     if (!$("body").value.trim()) { say("err", "正文不能为空"); return Promise.reject(new Error("no body")); }
 
+    var asDraft = target === "draft";
     var payload = {
       file: state.file,
+      target: asDraft ? "draft" : "post",
       title: $("title").value.trim(),
       date: $("date").value || today(),
       category: $("category").value.trim(),
       tags: $("tags").value,
       excerpt: $("excerpt").value.trim(),
-      body: bodyToHtml(),
-      draft: $("draft").checked
+      body: bodyToHtml()
     };
-    $("btnSave").disabled = true;
+    $("btnSavePost").disabled = true;
+    $("btnSaveDraft").disabled = true;
     $("saveHint").textContent = "保存中…";
 
     return api("POST", "/api/save", payload).then(function (j) {
       state.file = j.file;
-      $("editorTitle").textContent = "编辑：" + j.file;
+      state.where = j.where;
+      $("editorTitle").textContent = (j.draft ? "编辑草稿：" : "编辑文章：") + j.file;
+      $("fileHint").textContent = j.draft
+        ? "这是草稿，点「保存到首页」才会出现在首页"
+        : "改动会同步更新首页卡片";
       $("saveHint").textContent = "已保存 " + j.path;
+      $("btnDelete").hidden = false;
       $("step1").classList.add("done");
-      if (!$("commitMsg").value.trim()) $("commitMsg").value = "发布新文章：" + payload.title;
+      if (!$("commitMsg").value.trim()) {
+        $("commitMsg").value = (j.draft ? "更新草稿：" : "发布新文章：") + payload.title;
+      }
       say("ok", j.draft
-        ? "已保存为草稿：" + j.path + "（未加入首页）"
-        : "已保存：" + j.path + (j.totalPosts ? "，首页现有 " + j.totalPosts + " 篇文章" : ""));
+        ? "已存进草稿箱：" + j.path + "（不上海首页，也不会被推送部署）"
+        : "已保存到首页：" + j.path +
+          (j.totalPosts ? "，首页现有 " + j.totalPosts + " 篇文章" : "") +
+          "。记得点「发布到线上」。");
       return loadPosts();
     }).catch(function (e) {
       if (e && e.message && e.message !== "no title" && e.message !== "no body") {
@@ -484,32 +523,35 @@
       }
       throw e;
     }).finally(function () {
-      $("btnSave").disabled = false;
+      $("btnSavePost").disabled = false;
+      $("btnSaveDraft").disabled = false;
       if ($("saveHint").textContent === "保存中…") $("saveHint").textContent = "";
     });
   }
 
-  /* ---------------- 删除文章 ---------------- */
+  /* ---------------- 删除文章 / 草稿 ---------------- */
   function deletePost() {
-    if (!state.file) { say("info", "当前还没有保存过的文章，没有可删除的内容。"); return; }
+    if (!state.file) { say("info", "当前还没有保存过的内容，没有可删除的。"); return; }
     var file = state.file;
+    var isDraft = state.where === "drafts";
     var title = $("title").value.trim() || file;
 
     var ok = confirm(
-      "确定要删除这篇文章吗？\n\n" +
+      "确定要删除这个" + (isDraft ? "草稿" : "文章") + "吗？\n\n" +
       "标题：" + title + "\n" +
-      "文件：posts/" + file + "\n\n" +
-      "会同时删掉文章页和首页上的那张卡片。\n" +
-      "本地文件删除后，若还没点「发布到线上」，可从 git 历史里找回；\n" +
-      "推送之后就只能从 GitHub 历史里恢复了。"
+      "文件：" + (isDraft ? "drafts/" : "posts/") + file + "\n\n" +
+      (isDraft
+        ? "草稿只在你自己电脑上，删掉就没了（git 里没有备份）。"
+        : "会同时删掉文章页和首页上的那张卡片。\n本地文件可从 git 历史找回；推送之后只能去 GitHub 历史里恢复。")
     );
     if (!ok) return;
 
     $("btnDelete").disabled = true;
     $("saveHint").textContent = "删除中…";
 
-    api("POST", "/api/delete", { file: file }).then(function (j) {
-      say("ok", "已删除《" + (j.title || title) + "》" + (j.cardRemoved ? "，首页卡片也已移除" : "") +
+    api("POST", "/api/delete", { file: file, where: isDraft ? "drafts" : "posts" }).then(function (j) {
+      say("ok", "已删除" + (isDraft ? "草稿" : "文章") + "《" + (j.title || title) + "》" +
+                (j.cardRemoved ? "，首页卡片也已移除" : "") +
                 "，首页现有 " + j.totalPosts + " 篇文章。别忘了点「发布到线上」。");
       newPost();
       loadPosts();
@@ -658,16 +700,14 @@
 
   /* ---------------- 绑定 ---------------- */
   $("btnNew").addEventListener("click", newPost);
-  $("btnSave").addEventListener("click", function () { save().catch(function () {}); });
+  $("btnSavePost").addEventListener("click", function () { save("post").catch(function () {}); });
+  $("btnSaveDraft").addEventListener("click", function () { save("draft").catch(function () {}); });
   $("btnDelete").addEventListener("click", deletePost);
   $("btnPreview").addEventListener("click", refreshPreview);
   $("btnPublish").addEventListener("click", publish);
   $("btnPublish2").addEventListener("click", publish);
   $("btnReload").addEventListener("click", function () { loadPosts(); loadImages(); loadGit(); });
   $("imgInput").addEventListener("change", function (e) { uploadFiles(e.target.files); e.target.value = ""; });
-  $("draft").addEventListener("change", function () {
-    $("fileHint").textContent = this.checked ? "草稿：不会加入首页" : "保存后会自动加入首页";
-  });
 
   window.addEventListener("beforeunload", function (e) {
     if ($("body").value.trim() && !$("step1").classList.contains("done")) {

@@ -23,8 +23,14 @@ const HOST = "127.0.0.1";
 /* tools/publisher/server.js → 仓库根目录 */
 const ROOT = path.resolve(__dirname, "..", "..");
 const POSTS_DIR = path.join(ROOT, "posts");
+/* 草稿单独放 drafts/，并且整个目录加进 .gitignore ——
+   这样草稿永远不会被 push，也就不会被 Cloudflare 部署出去。
+   只放在 posts/ 是不够的：那样草稿虽然不在首页列出，
+   但任何人访问 /posts/xxx.html 依然能看到。 */
+const DRAFTS_DIR = path.join(ROOT, "drafts");
 const IMAGES_DIR = path.join(ROOT, "assets", "images");
 const INDEX_FILE = path.join(ROOT, "index.html");
+const GITIGNORE = path.join(ROOT, ".gitignore");
 
 /* 设计基准：新文章会从这篇文章读取 <head> 里的样式，保证风格一致。
    以后如果你换了主文章，把文件名改这里即可。 */
@@ -397,22 +403,30 @@ function syncCount(html) {
     .replace(/(<span class="section-count">)\s*\d+\s*篇(\s*<\/span>)/, `$1${total} 篇$2`);
 }
 
-function listPosts() {
-  if (!fs.existsSync(POSTS_DIR)) return [];
+/** 读取某个目录下的文章/草稿清单 */
+function listDir(dir, kind) {
+  if (!fs.existsSync(dir)) return [];
   return fs
-    .readdirSync(POSTS_DIR)
+    .readdirSync(dir)
     .filter((f) => f.endsWith(".html"))
     .sort()
     .map((f) => {
-      const raw = read(path.join(POSTS_DIR, f));
+      const raw = read(path.join(dir, f));
       const title = (/<h1 class="post-title">([\s\S]*?)<\/h1>/.exec(raw) || [, ""])[1].trim();
       const date = (/<time datetime="([^"]+)"/.exec(raw) || [, ""])[1];
       const catNav = (/<nav class="crumbs"[\s\S]*?<\/nav>/.exec(raw) || [""])[0];
       const category = (catNav.match(/<span>([\s\S]*?)<\/span>\s*<\/nav>/) || [, ""])[1].trim();
       const bodyRaw = (/<div class="article">([\s\S]*?)<!-- ★ 正文结束 ★ -->/.exec(raw) || [, ""])[1];
       const excerpt = (/<p>\s*([\s\S]*?)\s*<\/p>/.exec(bodyRaw) || [, ""])[1].replace(/<[^>]+>/g, "").trim();
-      return { file: f, title, date, category, excerpt };
+      return { file: f, title, date, category, excerpt, kind };
     });
+}
+
+/** 已发布 + 草稿，一起返回给编辑器 */
+function listAll() {
+  const posts = listDir(POSTS_DIR, "post");
+  const drafts = listDir(DRAFTS_DIR, "draft");
+  return { posts, drafts, totalPosts: posts.length, totalDrafts: drafts.length };
 }
 
 function postCardHtml(meta) {
@@ -458,6 +472,34 @@ function insertCard(meta) {
   return countCards(html);
 }
 
+/** 用最新内容替换首页上已有的那张卡片（保持位置不变）。
+ *  没有这张卡片时返回 false。 */
+function updateCard(meta) {
+  const html = read(INDEX_FILE);
+  const marked = `posts/${meta.file}`;
+  let hit = null;
+  for (const [s, e] of findCards(html)) {
+    if (html.slice(s, e).includes(marked)) { hit = [s, e]; break; }
+  }
+  if (!hit) return false;
+  const out = html.slice(0, hit[0]) + postCardHtml(meta).trim() + html.slice(hit[1]);
+  fs.writeFileSync(INDEX_FILE, syncCount(out), "utf-8");
+  return true;
+}
+
+/** 首页卡片与文章状态对齐：
+ *  - 已发布：卡片不存在就插入，存在就按最新标题/日期/摘要更新（修掉「改了文章首页不更新」）
+ *  - 草稿：把卡片摘掉 */
+function syncCard(meta, shouldBeListed) {
+  const listed = updateCard(meta);
+  if (shouldBeListed) {
+    if (!listed) return insertCard(meta);
+    return countCards(read(INDEX_FILE));
+  }
+  if (listed) removeCard(meta.file);
+  return countCards(read(INDEX_FILE));
+}
+
 /** 找出首页里所有文章卡片的边界（只认真正的卡片，跳过注释里的示例文字）。
  *  必须跳过注释，否则正则可能从注释里的 <li class="post"> 开始匹配，
  *  一路吃掉后面的 <ul class="post-list"> 和开头标签。 */
@@ -494,14 +536,31 @@ function removeCard(file) {
   return true;
 }
 
+/** 下一个可用编号：同时看 posts/ 和 drafts/，保证两边不撞号 */
 function nextFileNumber() {
-  if (!fs.existsSync(POSTS_DIR)) fs.mkdirSync(POSTS_DIR, { recursive: true });
-  const nums = fs
-    .readdirSync(POSTS_DIR)
-    .map((f) => (/^(\d+)-/.exec(f) || [])[1])
-    .filter(Boolean)
-    .map(Number);
+  const nums = [];
+  for (const dir of [POSTS_DIR, DRAFTS_DIR]) {
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir)) {
+      const m = /^(\d+)-/.exec(f);
+      if (m) nums.push(Number(m[1]));
+    }
+  }
   return String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, "0");
+}
+
+/** 确保 drafts/ 被 git 忽略，草稿才不会跟着 push 出去 */
+function ensureDraftsIgnored() {
+  let text = "";
+  try { text = fs.readFileSync(GITIGNORE, "utf-8"); } catch (e) { text = ""; }
+  const lines = text.split(/\r?\n/).map((l) => l.trim());
+  if (lines.includes("drafts/") || lines.includes("/drafts/")) return false;
+  const add = (text && !text.endsWith("\n") ? "\n" : "") +
+    (text ? "\n" : "") +
+    "# 本地草稿：只存在你自己电脑上，不 push、不部署\n" +
+    "drafts/\n";
+  fs.writeFileSync(GITIGNORE, text + add, "utf-8");
+  return true;
 }
 
 function slugify(s) {
@@ -569,13 +628,15 @@ const server = http.createServer(async (req, res) => {
         root: ROOT,
         baseArticle: path.relative(ROOT, BASE_ARTICLE),
         baseExists: fs.existsSync(BASE_ARTICLE),
+        draftsIgnored: !ensureDraftsIgnored(),
         git: gitStatus(),
+        ...listAll(),
       });
     }
 
-    /* ---------- 文章列表 ---------- */
+    /* ---------- 文章列表（已发布 + 草稿） ---------- */
     if (req.method === "GET" && p === "/api/posts") {
-      return json(res, 200, { posts: listPosts() });
+      return json(res, 200, listAll());
     }
 
     /* ---------- 图片列表 ---------- */
@@ -624,6 +685,11 @@ const server = http.createServer(async (req, res) => {
 
       const existing = String(b.file || "").trim();
       const isNew = !existing;
+
+      // target: "draft" 存草稿箱 / "post" 存为正式文章（默认 post）
+      // 兼容旧的布尔字段 draft
+      const asDraft = b.target ? b.target === "draft" : !!b.draft;
+
       const file = isNew
         ? `${nextFileNumber()}-${slugify(b.slug || title)}.html`
         : path.basename(existing);
@@ -635,27 +701,43 @@ const server = http.createServer(async (req, res) => {
         file, body: bodyHtml,
       };
 
-      fs.mkdirSync(POSTS_DIR, { recursive: true });
-      const target = path.join(POSTS_DIR, file);
+      // 允许改名（草稿转正式时保留原文件名，这里只做安全校验）
+      if (!/^[\w.\-]+\.html$/i.test(file)) return json(res, 400, { error: "文件名不合法" });
+
+      const targetDir = asDraft ? DRAFTS_DIR : POSTS_DIR;
+      const otherDir = asDraft ? POSTS_DIR : DRAFTS_DIR;
+      fs.mkdirSync(targetDir, { recursive: true });
+
+      const target = path.join(targetDir, file);
+      const other = path.join(otherDir, file);
       if (isNew && fs.existsSync(target)) return json(res, 409, { error: "文件已存在：" + file });
+
+      // 写入目标位置，并在另一个目录里删掉同名文件（草稿↔正式 的“搬家”）
       fs.writeFileSync(target, renderArticle(meta, bodyHtml), "utf-8");
+      if (fs.existsSync(other)) fs.unlinkSync(other);
 
-      const draft = !!b.draft;
-      let total = null;
-      if (draft) {
-        removeCard(file);
-      } else if (isNew) {
-        total = insertCard(meta);
-      }
+      // 首页卡片与状态对齐：正式文章要有卡片（没有就插、有就更新），草稿则摘掉卡片
+      const total = syncCard(meta, !asDraft);
 
-      return json(res, 200, { ok: true, file, path: "posts/" + file, isNew, draft, totalPosts: total });
+      return json(res, 200, {
+        ok: true, file, isNew,
+        where: asDraft ? "drafts" : "posts",
+        path: (asDraft ? "drafts/" : "posts/") + file,
+        draft: asDraft,
+        totalPosts: total,
+      });
     }
 
-    /* ---------- 读取单篇文章（用于编辑） ---------- */
+    /* ---------- 读取单篇（文章或草稿，用于编辑） ---------- */
     if (req.method === "GET" && p === "/api/read") {
-      const file = path.basename(url.searchParams.get("file") || "");
-      const target = path.join(POSTS_DIR, file);
-      if (!file || !fs.existsSync(target)) return json(res, 404, { error: "文章不存在" });
+      const raw = String(url.searchParams.get("file") || "").trim();
+      if (!raw || raw !== path.basename(raw) || /[\\/]/.test(raw) || raw.includes("..")) {
+        return json(res, 400, { error: "文件名不合法（不允许路径）" });
+      }
+      const where = url.searchParams.get("where") === "drafts" ? "drafts" : "posts";
+      const dir = where === "drafts" ? DRAFTS_DIR : POSTS_DIR;
+      const target = path.join(dir, raw);
+      if (!fs.existsSync(target)) return json(res, 404, { error: "找不到文件：" + raw });
       const t = read(target);
       const title = (/<h1 class="post-title">([\s\S]*?)<\/h1>/.exec(t) || [, ""])[1].trim();
       const date = (/<time datetime="([^"]+)"/.exec(t) || [, ""])[1];
@@ -664,14 +746,16 @@ const server = http.createServer(async (req, res) => {
       const catNav = (/<nav class="crumbs"[\s\S]*?<\/nav>/.exec(t) || [""])[0];
       const category = (catNav.match(/<span>([\s\S]*?)<\/span>\s*<\/nav>/) || [, "随笔"])[1].trim();
       return json(res, 200, {
-        file, title, date,
+        file: raw, where,
+        isDraft: where === "drafts",
+        title, date,
         tags: [...new Set(tags)].slice(0, 6),
         category: category || "随笔",
         body,
       });
     }
 
-    /* ---------- 删除文章 ---------- */
+    /* ---------- 删除文章 / 草稿 ---------- */
     if (req.method === "POST" && p === "/api/delete") {
       const b = JSON.parse((await readBody(req)).toString("utf-8"));
       const raw = String(b.file || "").trim();
@@ -685,19 +769,23 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { error: "文件名不合法" });
       }
       const file = raw;
-      const target = path.join(POSTS_DIR, file);
-      if (!fs.existsSync(target)) return json(res, 404, { error: "文章不存在：" + file });
+      const where = b.where === "drafts" ? "drafts" : "posts";
+      const dir = where === "drafts" ? DRAFTS_DIR : POSTS_DIR;
+      const target = path.join(dir, file);
+      if (!fs.existsSync(target)) {
+        return json(res, 404, { error: (where === "drafts" ? "草稿" : "文章") + "不存在：" + file });
+      }
 
       const removedTitle = (/<h1 class="post-title">([\s\S]*?)<\/h1>/.exec(read(target)) || [, ""])[1].trim();
 
-      // 先摘卡片再删文件，两步都成功才算数
-      const hadCard = removeCard(file);
+      // 只有已发布的文章才需要摘首页卡片
+      const hadCard = where === "posts" ? removeCard(file) : false;
       fs.unlinkSync(target);
       const total = countCards(read(INDEX_FILE));
 
       return json(res, 200, {
         ok: true,
-        file,
+        file, where,
         title: removedTitle,
         cardRemoved: hadCard,   // 草稿本来就不在首页，这里是 false 属正常
         totalPosts: total,
@@ -759,13 +847,21 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   const line = "=".repeat(58);
+  // 启动就确保 drafts/ 被 git 忽略，避免草稿被误 push
+  let addedIgnore = false;
+  try { addedIgnore = ensureDraftsIgnored(); } catch (e) {}
+  try { fs.mkdirSync(DRAFTS_DIR, { recursive: true }); } catch (e) {}
+
   console.log(line);
   console.log("  verniy 博客本地发布器已启动");
   console.log(line);
   console.log("  编辑器地址 : http://" + HOST + ":" + PORT);
   console.log("  站点根目录 : " + ROOT);
+  console.log("  已发布目录 : posts/");
+  console.log("  草稿箱目录 : drafts/   (已在 .gitignore 中，不会被推送部署)");
   console.log("  样式来源   : " + path.relative(ROOT, BASE_ARTICLE) +
     (fs.existsSync(BASE_ARTICLE) ? "" : "   ← 文件不存在！"));
+  if (addedIgnore) console.log("  注意：刚刚把 drafts/ 写进了 .gitignore，记得提交这个改动");
   console.log(line);
   console.log("  按 Ctrl+C 停止");
   console.log("");
