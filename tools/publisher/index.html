@@ -124,6 +124,22 @@
               display:flex; align-items:center; justify-content:center; font-size:11px; margin-top:2px; color:transparent; }
   .steps li.done{ color:var(--text); }
   .steps li.done .mk{ background:var(--ok); border-color:var(--ok); color:#fff; }
+
+  /* 未发布改动横幅：删除/修改后网站仍是旧版，必须显眼 */
+  .unpublished{ display:flex; align-items:center; gap:12px; padding:12px 14px; margin-bottom:16px;
+    background:var(--warn-soft); border:1px solid #F0DCB8; border-left:4px solid var(--warn);
+    border-radius:var(--radius); box-shadow:var(--shadow); }
+  .unpublished[hidden]{ display:none; }
+  .unpub-ic{ flex:none; width:22px; height:22px; border-radius:50%; background:var(--warn); color:#fff;
+    font-weight:800; font-size:14px; display:flex; align-items:center; justify-content:center; }
+  .unpub-tx{ flex:1; min-width:0; line-height:1.5; }
+  .unpub-tx b{ display:block; font-size:14px; color:#8A5A0B; }
+  .unpub-tx span{ font-size:12.5px; color:#9A6B1E; }
+  @media (max-width:720px){
+    .unpublished{ flex-wrap:wrap; }
+    .unpub-tx{ flex:1 1 100%; order:2; }
+    .unpublished .btn{ order:1; margin-left:auto; }
+  }
 </style>
 </head>
 <body>
@@ -179,6 +195,15 @@
 
   <div>
     <div id="messages"></div>
+
+    <div class="unpublished" id="unpubBanner" hidden>
+      <div class="unpub-ic">!</div>
+      <div class="unpub-tx">
+        <b id="unpubTitle">有改动还没发布</b>
+        <span id="unpubDesc">现在打开网站看到的还是旧版本。</span>
+      </div>
+      <button class="btn primary" id="btnUnpubPublish" type="button">立即发布</button>
+    </div>
 
     <section class="panel">
       <div class="panel-h">
@@ -588,7 +613,8 @@
       "文件：" + (isDraft ? "drafts/" : "posts/") + file + "\n\n" +
       (isDraft
         ? "草稿只在你自己电脑上，删掉就没了（git 里没有备份）。"
-        : "会同时删掉文章页和首页上的那张卡片。\n本地文件可从 git 历史找回；推送之后只能去 GitHub 历史里恢复。")
+        : "会同时删掉文章页和首页上的那张卡片。\n本地文件可从 git 历史找回；推送之后只能去 GitHub 历史里恢复。") +
+      (isDraft ? "" : "\n\n注意：删除只改本地。\n要点「发布到线上」，网站上才会真的看不到这篇。")
     );
     if (!ok) return;
 
@@ -605,6 +631,19 @@
       loadGit();
       $("step1").classList.remove("done");
       $("step2").classList.remove("done");
+
+      // 删除是最容易"以为已经生效"的操作：直接问一次要不要立刻发布
+      if (!isDraft) {
+        setTimeout(function () {
+          if (confirm("已从本地删除《" + (j.title || title) + "》。\n\n" +
+                      "现在要发布到线上吗？\n\n" +
+                      "选「取消」的话：网站上还是能看到这篇文章（以及首页那张卡片），" +
+                      "直到你手动点右上角「发布到线上」。")) {
+            $("commitMsg").value = "删除文章：" + (j.title || title);
+            publish(true);
+          }
+        }, 150);
+      }
     }).catch(function (e) {
       say("err", "删除失败：" + e.message);
     }).finally(function () {
@@ -614,9 +653,9 @@
   }
 
   /* ---------------- 发布 ---------------- */
-  function publish() {
+  function publish(skipConfirm) {
     var msg = $("commitMsg").value.trim() || "更新：发布文章";
-    if (!confirm("确认提交并推送到 GitHub？\n\n" + msg + "\n\n推送后 Cloudflare 会自动部署。")) return;
+    if (skipConfirm !== true && !confirm("确认提交并推送到 GitHub？\n\n" + msg + "\n\n推送后 Cloudflare 会自动部署。")) return;
     $("btnPublish").disabled = true;
     $("btnPublish2").disabled = true;
     $("publishHint").textContent = "推送中…";
@@ -648,12 +687,17 @@
         txt.textContent = "git 不可用";
         return;
       }
+      var ban = $("unpubBanner");
       if (j.git.dirty > 0) {
         chip.className = "chip warn";
-        txt.textContent = j.git.branch + " · " + j.git.dirty + " 个改动未提交";
+        txt.textContent = j.git.branch + " · " + j.git.dirty + " 个改动未发布";
+        ban.hidden = false;
+        $("unpubTitle").textContent = "有 " + j.git.dirty + " 个改动还没发布到线上";
+        $("unpubDesc").textContent = "网站现在还是旧版本 —— 删除、新增、修改都要点「发布到线上」才会生效。";
       } else {
         chip.className = "chip ok";
-        txt.textContent = j.git.branch + " · 与线上一致";
+        txt.textContent = j.git.branch + " · 已与线上同步";
+        ban.hidden = true;
       }
       if (!j.baseExists) {
         say("err", "找不到样式基准文章（" + j.baseArticle + "），生成新文章会失败。");
@@ -762,6 +806,7 @@
   $("btnPreview").addEventListener("click", refreshPreview);
   $("btnPublish").addEventListener("click", publish);
   $("btnPublish2").addEventListener("click", publish);
+  $("btnUnpubPublish").addEventListener("click", publish);
   $("btnReload").addEventListener("click", function () { loadPosts(); loadImages(); loadGit(); });
   $("btnSyncNav").addEventListener("click", syncNav);
   $("imgInput").addEventListener("change", function (e) { uploadFiles(e.target.files); e.target.value = ""; });
