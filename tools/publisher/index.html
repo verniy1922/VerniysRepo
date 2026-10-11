@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>本地发布器 · verniy 的博客</title>
+<style>
+  :root{
+    --blue:#4A90D9; --blue-dark:#3A7ABF; --blue-soft:#EAF2FB; --blue-line:#D6E6F7;
+    --bg:#F7F9FC; --card:#fff; --text:#3A3F47; --text-soft:#6B7280; --text-faint:#9AA3AF;
+    --line:#E8ECF1; --ok:#2F9E63; --ok-soft:#EAF7F0; --warn:#C8811A; --warn-soft:#FDF4E5;
+    --err:#C2453D; --err-soft:#FCEDEC;
+    --radius:12px; --shadow:0 1px 2px rgba(16,24,40,.04), 0 6px 18px rgba(16,24,40,.06);
+  }
+  *,*::before,*::after{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",Helvetica,Arial,sans-serif;
+    font-size:14.5px; line-height:1.7; -webkit-font-smoothing:antialiased;
+  }
+  a{ color:var(--blue); text-decoration:none; }
+  a:hover{ text-decoration:underline; }
+  code{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.88em;
+        background:var(--blue-soft); border:1px solid var(--blue-line); border-radius:5px; padding:1px 5px; color:var(--blue-dark); }
+
+  .top{ position:sticky; top:0; z-index:20; background:rgba(255,255,255,.9);
+        backdrop-filter:saturate(180%) blur(10px); border-bottom:1px solid var(--line); }
+  .top-in{ max-width:1280px; margin:0 auto; padding:10px 20px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .brand{ font-weight:800; letter-spacing:.01em; }
+  .brand span{ color:var(--blue); }
+  .top .spacer{ flex:1 1 auto; }
+  .chip{ display:inline-flex; align-items:center; gap:6px; font-size:12.5px; padding:4px 10px;
+         border-radius:999px; border:1px solid var(--line); background:#fff; color:var(--text-soft); }
+  .chip.ok{ color:var(--ok); border-color:#C8E6D5; background:var(--ok-soft); }
+  .chip.warn{ color:var(--warn); border-color:#F0DCB8; background:var(--warn-soft); }
+  .dot-live{ width:7px; height:7px; border-radius:50%; background:currentColor; }
+
+  .wrap{ max-width:1280px; margin:0 auto; padding:20px; display:grid; grid-template-columns:280px minmax(0,1fr); gap:20px; align-items:start; }
+  @media (max-width:900px){ .wrap{ grid-template-columns:1fr; } }
+
+  .panel{ background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); }
+  .panel + .panel{ margin-top:18px; }
+  .panel-h{ padding:14px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; }
+  .panel-h h2{ margin:0; font-size:14px; font-weight:700; letter-spacing:.02em; }
+  .panel-h .sub{ font-size:12.5px; color:var(--text-faint); }
+  .panel-b{ padding:16px 18px; }
+
+  .plist{ list-style:none; margin:0; padding:8px; }
+  .plist li{ margin-bottom:4px; }
+  .plist button{ width:100%; text-align:left; font:inherit; cursor:pointer; border:1px solid transparent;
+                 background:transparent; border-radius:9px; padding:9px 11px; color:var(--text); }
+  .plist button:hover{ background:var(--blue-soft); }
+  .plist button.on{ background:var(--blue-soft); border-color:var(--blue-line); }
+  .plist .t{ display:block; font-weight:600; font-size:13.5px; line-height:1.45; }
+  .plist .d{ display:block; font-size:12px; color:var(--text-faint); margin-top:2px; }
+
+  .field{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+  .field > label{ font-size:12.5px; font-weight:600; color:var(--text-soft); }
+  .field .hint{ font-size:12px; color:var(--text-faint); font-weight:400; }
+  input[type=text], input[type=date], textarea{ font:inherit; color:var(--text); background:#fff;
+    border:1px solid var(--line); border-radius:9px; padding:9px 11px; width:100%; outline:none; }
+  input:focus, textarea:focus{ border-color:var(--blue); box-shadow:0 0 0 3px rgba(74,144,217,.14); }
+  textarea{ resize:vertical; line-height:1.7; }
+  #body{ min-height:320px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:13px; }
+
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .grid3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+  @media (max-width:640px){ .grid2,.grid3{ grid-template-columns:1fr; } }
+
+  .seg{ display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; }
+  .seg button{ font:inherit; font-size:12.5px; padding:6px 12px; border:0; background:#fff; color:var(--text-soft); cursor:pointer; }
+  .seg button.on{ background:var(--blue); color:#fff; }
+
+  .toolbar{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .toolbar button{ font:inherit; font-size:12.5px; cursor:pointer; padding:5px 10px; border-radius:8px;
+                   border:1px solid var(--line); background:#fff; color:var(--text-soft); }
+  .toolbar button:hover{ border-color:var(--blue-line); background:var(--blue-soft); color:var(--blue-dark); }
+
+  .btn{ display:inline-flex; align-items:center; justify-content:center; gap:7px; font:inherit; font-weight:600;
+        font-size:14px; padding:9px 16px; border-radius:999px; border:1px solid var(--blue-line);
+        background:#fff; color:var(--blue); cursor:pointer; white-space:nowrap;
+        transition:background-color .16s, color .16s, border-color .16s, transform .16s; }
+  .btn:hover{ background:var(--blue-soft); border-color:#C3DBF3; color:var(--blue-dark); transform:translateY(-1px); }
+  .btn:active{ transform:none; }
+  .btn.primary{ background:var(--blue); border-color:var(--blue); color:#fff; }
+  .btn.primary:hover{ background:var(--blue-dark); border-color:var(--blue-dark); color:#fff; }
+  .btn.ghost{ color:var(--text-soft); border-color:var(--line); }
+  .btn[disabled]{ opacity:.5; cursor:not-allowed; transform:none; }
+  .btn-row{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+
+  .preview{ padding:18px; }
+  .preview h1{ font-size:22px; margin:0 0 8px; line-height:1.35; }
+  .preview .meta{ font-size:12.5px; color:var(--text-faint); margin-bottom:14px; }
+  .preview .pbody{ font-size:15px; line-height:1.9; color:#414751; }
+  .preview .pbody h2{ font-size:17px; margin:1.6em 0 .6em; padding-bottom:.3em; border-bottom:1px solid var(--line); }
+  .preview .pbody h3{ font-size:15.5px; margin:1.4em 0 .5em; }
+  .preview .pbody p{ margin:0 0 1em; }
+  .preview .pbody ul,.preview .pbody ol{ margin:0 0 1em; padding-left:1.3em; }
+  .preview .pbody blockquote{ margin:1.2em 0; padding-left:16px; border-left:3px solid var(--blue-line); color:var(--text-soft); }
+  .preview .pbody pre{ background:#F8FAFC; border:1px solid var(--line); border-radius:9px; padding:13px; overflow-x:auto; font-size:12.5px; }
+  .preview .pbody img{ max-width:100%; height:auto; border-radius:9px; border:1px solid var(--line); display:block; margin:1.2em auto; }
+  .preview .tagline{ display:flex; gap:7px; flex-wrap:wrap; margin-bottom:10px; }
+  .preview .tag{ font-size:11.5px; padding:2px 9px; border-radius:999px; background:var(--blue-soft); border:1px solid var(--blue-line); color:var(--blue-dark); }
+
+  .log{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px; line-height:1.65;
+        background:#F8FAFC; border:1px solid var(--line); border-radius:9px; padding:12px 14px;
+        white-space:pre-wrap; word-break:break-word; max-height:260px; overflow:auto; color:#3F4753; margin:0; }
+  .msg{ border-radius:9px; padding:11px 14px; font-size:13.5px; margin-bottom:12px; }
+  .msg.ok{ background:var(--ok-soft); border:1px solid #C8E6D5; color:#1F6B45; }
+  .msg.err{ background:var(--err-soft); border:1px solid #F0CFCC; color:#8E2F28; }
+  .msg.info{ background:var(--blue-soft); border:1px solid var(--blue-line); color:var(--blue-dark); }
+  .empty{ color:var(--text-faint); font-size:13px; padding:6px 2px; }
+
+  .imglist{ display:grid; grid-template-columns:repeat(auto-fill,minmax(88px,1fr)); gap:10px; margin-top:12px; }
+  .imglist figure{ margin:0; cursor:pointer; }
+  .imglist img{ width:100%; height:70px; object-fit:cover; border-radius:8px; border:1px solid var(--line); display:block; }
+  .imglist figcaption{ font-size:11px; color:var(--text-faint); margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  .steps{ list-style:none; margin:0 0 14px; padding:0; }
+  .steps li{ display:flex; gap:9px; align-items:flex-start; font-size:13.5px; padding:5px 0; color:var(--text-soft); }
+  .steps .mk{ width:18px; height:18px; flex:0 0 18px; border-radius:50%; border:1.5px solid var(--line);
+              display:flex; align-items:center; justify-content:center; font-size:11px; margin-top:2px; color:transparent; }
+  .steps li.done{ color:var(--text); }
+  .steps li.done .mk{ background:var(--ok); border-color:var(--ok); color:#fff; }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="top-in">
+    <div class="brand">本地发布器 · <span>verniy</span></div>
+    <span class="chip" id="gitChip"><span class="dot-live"></span><span id="gitText">读取 git 状态…</span></span>
+    <div class="spacer"></div>
+    <button class="btn ghost" id="btnReload" type="button">重新载入</button>
+    <button class="btn" id="btnNew" type="button">写新文章</button>
+    <button class="btn primary" id="btnPublish" type="button">发布到线上</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div>
+    <section class="panel">
+      <div class="panel-h">
+        <h2>已有文章</h2>
+        <span style="flex:1"></span>
+        <span class="sub" id="postCount">—</span>
+      </div>
+      <ul class="plist" id="postList"></ul>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><h2>图片</h2><span style="flex:1"></span><span class="sub">点击复制路径</span></div>
+      <div class="panel-b">
+        <input type="file" id="imgInput" accept="image/*" multiple style="font-size:12.5px">
+        <div class="empty" id="imgHint">上传后可在正文里插图。</div>
+        <div class="imglist" id="imgList"></div>
+      </div>
+    </section>
+  </div>
+
+  <div>
+    <div id="messages"></div>
+
+    <section class="panel">
+      <div class="panel-h">
+        <h2 id="editorTitle">写新文章</h2>
+        <span style="flex:1"></span>
+        <span class="sub" id="fileHint">保存后会自动加入首页</span>
+      </div>
+      <div class="panel-b">
+
+        <div class="field">
+          <label>标题</label>
+          <input type="text" id="title" placeholder="例如：牢一的互联网大食堂开业了">
+        </div>
+
+        <div class="grid3">
+          <div class="field">
+            <label>日期</label>
+            <input type="date" id="date">
+          </div>
+          <div class="field">
+            <label>分类 <span class="hint">面包屑</span></label>
+            <input type="text" id="category" placeholder="随笔">
+          </div>
+          <div class="field">
+            <label>标签 <span class="hint">逗号分隔</span></label>
+            <input type="text" id="tags" placeholder="日常, 碎碎念">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>首页摘要 <span class="hint">显示在卡片上的两三句话</span></label>
+          <textarea id="excerpt" rows="2" placeholder="一句话概括这篇写了什么"></textarea>
+        </div>
+
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:10px">
+            <span>正文</span>
+            <span class="seg" id="fmtSeg">
+              <button type="button" data-fmt="md" class="on">Markdown</button>
+              <button type="button" data-fmt="html">HTML</button>
+            </span>
+          </label>
+          <div class="toolbar" id="mdTools">
+            <button type="button" data-md="h2">小标题</button>
+            <button type="button" data-md="bold">加粗</button>
+            <button type="button" data-md="quote">引用</button>
+            <button type="button" data-md="ul">列表</button>
+            <button type="button" data-md="code">代码块</button>
+            <button type="button" data-md="img">插图</button>
+          </div>
+          <textarea id="body" placeholder="在这里写正文…"></textarea>
+        </div>
+
+        <label class="chip" style="cursor:pointer;margin-bottom:14px">
+          <input type="checkbox" id="draft"> 存为草稿（不显示在首页）
+        </label>
+
+        <div class="btn-row">
+          <button class="btn primary" id="btnSave" type="button">保存文章</button>
+          <button class="btn" id="btnPreview" type="button">刷新预览</button>
+          <span id="saveHint" style="color:var(--text-faint);font-size:12.5px"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><h2>预览</h2></div>
+      <div class="preview" id="preview">
+        <div class="empty">填好标题和正文后，点「刷新预览」看效果。</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><h2>发布到线上</h2><span style="flex:1"></span><span class="sub">git commit + push</span></div>
+      <div class="panel-b">
+        <ul class="steps" id="steps">
+          <li id="step1"><span class="mk">✓</span><span>保存文章（生成文章页并更新首页）</span></li>
+          <li id="step2"><span class="mk">✓</span><span>点「发布到线上」（提交并推送到 GitHub）</span></li>
+          <li id="step3"><span class="mk">✓</span><span>等 Cloudflare 自动部署（约 1 分钟）</span></li>
+        </ul>
+        <div class="field">
+          <label>提交说明</label>
+          <input type="text" id="commitMsg" placeholder="发布新文章：…">
+        </div>
+        <div class="btn-row" style="margin-bottom:12px">
+          <button class="btn" id="btnPublish2" type="button">发布到线上</button>
+          <span id="publishHint" style="color:var(--text-faint);font-size:12.5px"></span>
+        </div>
+        <pre class="log" id="publishLog" hidden></pre>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var $ = function (id) { return document.getElementById(id); };
+  var state = { file: null, format: "md", images: [] };
+  var FENCE = String.fromCharCode(96, 96, 96); // 三个反引号
+
+  function today() {
+    var d = new Date(), p = function (n) { return String(n).padStart(2, "0"); };
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function say(kind, text) {
+    var box = $("messages");
+    var d = document.createElement("div");
+    d.className = "msg " + kind;
+    d.textContent = text;
+    box.innerHTML = "";
+    box.appendChild(d);
+    if (kind === "ok") {
+      setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 6000);
+    }
+  }
+
+  function api(method, url, body) {
+    return fetch(url, {
+      method: method,
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+        return j;
+      });
+    });
+  }
+
+  /* ---------------- Markdown → HTML ---------------- */
+  function mdInline(s) {
+    return s
+      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>");
+  }
+
+  function mdToHtml(md) {
+    var out = [];
+    var lines = String(md).replace(/\r\n/g, "\n").split("\n");
+    var i = 0;
+    while (i < lines.length) {
+      var line = lines[i];
+      if (/^\s*/.test(line) && line.trim().indexOf(FENCE) === 0) {
+        var buf = [];
+        i++;
+        while (i < lines.length && lines[i].trim().indexOf(FENCE) !== 0) { buf.push(lines[i]); i++; }
+        i++;
+        out.push("<pre><code>" + esc(buf.join("\n")) + "</code></pre>");
+        continue;
+      }
+      var h = /^(#{1,4})\s+(.*)$/.exec(line);
+      if (h) {
+        var lvl = Math.min(h[1].length + 1, 4);
+        out.push("<h" + lvl + ">" + mdInline(esc(h[2].trim())) + "</h" + lvl + ">");
+        i++; continue;
+      }
+      if (/^\s*(---|\*\*\*)\s*$/.test(line)) { out.push("<hr>"); i++; continue; }
+      if (/^\s*>\s?/.test(line)) {
+        var q = [];
+        while (i < lines.length && /^\s*>\s?/.test(lines[i])) { q.push(lines[i].replace(/^\s*>\s?/, "")); i++; }
+        out.push("<blockquote><p>" + mdInline(esc(q.join(" "))) + "</p></blockquote>");
+        continue;
+      }
+      if (/^\s*[-*+]\s+/.test(line)) {
+        var ul = [];
+        while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) { ul.push(lines[i].replace(/^\s*[-*+]\s+/, "")); i++; }
+        out.push("<ul>" + ul.map(function (x) { return "<li>" + mdInline(esc(x)) + "</li>"; }).join("") + "</ul>");
+        continue;
+      }
+      if (/^\s*\d+\.\s+/.test(line)) {
+        var ol = [];
+        while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { ol.push(lines[i].replace(/^\s*\d+\.\s+/, "")); i++; }
+        out.push("<ol>" + ol.map(function (x) { return "<li>" + mdInline(esc(x)) + "</li>"; }).join("") + "</ol>");
+        continue;
+      }
+      if (!line.trim()) { i++; continue; }
+      var para = [];
+      while (i < lines.length && lines[i].trim() &&
+             !/^\s*(#{1,4}\s|>|[-*+]\s|\d+\.\s|---|\*\*\*)/.test(lines[i]) &&
+             lines[i].trim().indexOf(FENCE) !== 0) {
+        para.push(lines[i]); i++;
+      }
+      out.push("<p>" + mdInline(esc(para.join(" "))) + "</p>");
+    }
+    return out.join("\n        ");
+  }
+
+  function bodyToHtml() {
+    var raw = $("body").value;
+    if (state.format === "html") return raw;
+    return mdToHtml(raw);
+  }
+
+  /* ---------------- 预览 ---------------- */
+  function renderTags() {
+    var tags = $("tags").value.split(/[,，\s]+/).filter(Boolean);
+    if (!tags.length) tags = ["随笔"];
+    return tags.map(function (t) { return '<span class="tag">' + esc(t) + "</span>"; }).join("");
+  }
+
+  function refreshPreview() {
+    var html = bodyToHtml();
+    $("preview").innerHTML =
+      '<div class="tagline">' + renderTags() + "</div>" +
+      "<h1>" + esc($("title").value || "（未填标题）") + "</h1>" +
+      '<div class="meta">' + esc($("date").value || today()) + "</div>" +
+      '<div class="pbody">' + html + "</div>";
+  }
+
+  /* ---------------- 文章列表 ---------------- */
+  function loadPosts() {
+    return api("GET", "/api/posts").then(function (j) {
+      var ul = $("postList");
+      ul.innerHTML = "";
+      $("postCount").textContent = j.posts.length + " 篇";
+      if (!j.posts.length) {
+        ul.innerHTML = '<li><div class="empty" style="padding:10px 14px">还没有文章</div></li>';
+        return;
+      }
+      j.posts.slice().reverse().forEach(function (p) {
+        var li = document.createElement("li");
+        var b = document.createElement("button");
+        b.type = "button";
+        b.innerHTML = '<span class="t">' + esc(p.title || p.file) + '</span><span class="d">' +
+                      esc(p.date || "") + " · " + esc(p.file) + "</span>";
+        b.addEventListener("click", function () { loadPost(p.file); });
+        li.appendChild(b);
+        ul.appendChild(li);
+      });
+    });
+  }
+
+  function loadPost(file) {
+    return api("GET", "/api/read?file=" + encodeURIComponent(file)).then(function (j) {
+      state.file = j.file;
+      $("title").value = j.title;
+      $("date").value = j.date || today();
+      $("category").value = j.category || "随笔";
+      $("tags").value = (j.tags || []).join(", ");
+      $("excerpt").value = "";
+      $("body").value = j.body;
+      $("editorTitle").textContent = "编辑：" + j.file;
+      $("fileHint").textContent = "更新后会自动同步首页卡片";
+      $("commitMsg").value = "更新文章：" + j.title;
+      $("saveHint").textContent = "";
+      $("draft").checked = false;
+      state.format = "html";
+      Array.prototype.forEach.call($("fmtSeg").children, function (x) {
+        x.classList.toggle("on", x.dataset.fmt === "html");
+      });
+      say("info", "已载入 " + j.file + "（已有文章按 HTML 编辑，避免 Markdown 转换改变排版）");
+      refreshPreview();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }).catch(function (e) { say("err", "读取失败：" + e.message); });
+  }
+
+  function newPost() {
+    state.file = null;
+    $("title").value = "";
+    $("date").value = today();
+    $("category").value = "随笔";
+    $("tags").value = "";
+    $("excerpt").value = "";
+    $("body").value = "";
+    $("editorTitle").textContent = "写新文章";
+    $("fileHint").textContent = "保存后会自动加入首页";
+    $("commitMsg").value = "";
+    $("saveHint").textContent = "";
+    $("draft").checked = false;
+    $("preview").innerHTML = '<div class="empty">填好标题和正文后，点「刷新预览」看效果。</div>';
+  }
+
+  /* ---------------- 保存 ---------------- */
+  function save() {
+    if (!$("title").value.trim()) { say("err", "标题不能为空"); return Promise.reject(new Error("no title")); }
+    if (!$("body").value.trim()) { say("err", "正文不能为空"); return Promise.reject(new Error("no body")); }
+
+    var payload = {
+      file: state.file,
+      title: $("title").value.trim(),
+      date: $("date").value || today(),
+      category: $("category").value.trim(),
+      tags: $("tags").value,
+      excerpt: $("excerpt").value.trim(),
+      body: bodyToHtml(),
+      draft: $("draft").checked
+    };
+    $("btnSave").disabled = true;
+    $("saveHint").textContent = "保存中…";
+
+    return api("POST", "/api/save", payload).then(function (j) {
+      state.file = j.file;
+      $("editorTitle").textContent = "编辑：" + j.file;
+      $("saveHint").textContent = "已保存 " + j.path;
+      $("step1").classList.add("done");
+      if (!$("commitMsg").value.trim()) $("commitMsg").value = "发布新文章：" + payload.title;
+      say("ok", j.draft
+        ? "已保存为草稿：" + j.path + "（未加入首页）"
+        : "已保存：" + j.path + (j.totalPosts ? "，首页现有 " + j.totalPosts + " 篇文章" : ""));
+      return loadPosts();
+    }).catch(function (e) {
+      if (e && e.message && e.message !== "no title" && e.message !== "no body") {
+        say("err", "保存失败：" + e.message);
+      }
+      throw e;
+    }).finally(function () {
+      $("btnSave").disabled = false;
+      if ($("saveHint").textContent === "保存中…") $("saveHint").textContent = "";
+    });
+  }
+
+  /* ---------------- 发布 ---------------- */
+  function publish() {
+    var msg = $("commitMsg").value.trim() || "更新：发布文章";
+    if (!confirm("确认提交并推送到 GitHub？\n\n" + msg + "\n\n推送后 Cloudflare 会自动部署。")) return;
+    $("btnPublish").disabled = true;
+    $("btnPublish2").disabled = true;
+    $("publishHint").textContent = "推送中…";
+    var log = $("publishLog");
+    log.hidden = false;
+    log.textContent = "git add -A\ngit commit\ngit push\n";
+
+    api("POST", "/api/publish", { message: msg }).then(function (j) {
+      log.textContent += "\n" + (j.output || "(无输出)");
+      $("publishHint").textContent = "已推送，等 Cloudflare 部署";
+      $("step2").classList.add("done");
+      say("ok", "发布成功，Cloudflare 大约 1 分钟内完成部署。");
+      return loadGit();
+    }).catch(function (e) {
+      log.textContent += "\n发布失败：" + e.message;
+      $("publishHint").textContent = "发布失败";
+      say("err", "发布失败：" + e.message + "（详情见下方日志）");
+    }).finally(function () {
+      $("btnPublish").disabled = false;
+      $("btnPublish2").disabled = false;
+    });
+  }
+
+  function loadGit() {
+    return api("GET", "/api/info").then(function (j) {
+      var chip = $("gitChip"), txt = $("gitText");
+      if (!j.git || !j.git.ok) {
+        chip.className = "chip warn";
+        txt.textContent = "git 不可用";
+        return;
+      }
+      if (j.git.dirty > 0) {
+        chip.className = "chip warn";
+        txt.textContent = j.git.branch + " · " + j.git.dirty + " 个改动未提交";
+      } else {
+        chip.className = "chip ok";
+        txt.textContent = j.git.branch + " · 与线上一致";
+      }
+      if (!j.baseExists) {
+        say("err", "找不到样式基准文章（" + j.baseArticle + "），生成新文章会失败。");
+      }
+    }).catch(function () {
+      $("gitChip").className = "chip warn";
+      $("gitText").textContent = "git 状态读取失败";
+    });
+  }
+
+  /* ---------------- 图片 ---------------- */
+  function loadImages() {
+    return api("GET", "/api/images").then(function (j) {
+      state.images = j.images || [];
+      var box = $("imgList");
+      box.innerHTML = "";
+      if (!state.images.length) { $("imgHint").hidden = false; return; }
+      $("imgHint").hidden = true;
+      state.images.forEach(function (f) {
+        var fig = document.createElement("figure");
+        fig.title = "点击复制路径：../assets/images/" + f;
+        fig.innerHTML = '<img src="/assets/images/' + encodeURIComponent(f) + '" alt="' + esc(f) + '">' +
+                        "<figcaption>" + esc(f) + "</figcaption>";
+        fig.addEventListener("click", function () {
+          var p = "../assets/images/" + f;
+          navigator.clipboard.writeText(p).then(function () {
+            say("info", "已复制路径：" + p);
+          }, function () {
+            say("info", "路径：" + p);
+          });
+        });
+        box.appendChild(fig);
+      });
+    });
+  }
+
+  function uploadFiles(files) {
+    if (!files || !files.length) return;
+    var list = Array.prototype.slice.call(files);
+    var done = 0;
+    list.forEach(function (f) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var safe = f.name.replace(/[^\w.\-]+/g, "_");
+        api("POST", "/api/upload", { name: safe, data: fr.result }).then(function (j) {
+          done++;
+          say("ok", "已上传 " + j.file + "（" + Math.round(j.bytes / 1024) + " KB），路径 " + j.webPath);
+          if (done === list.length) loadImages();
+        }).catch(function (e) { say("err", "上传失败：" + e.message); });
+      };
+      fr.readAsDataURL(f);
+    });
+  }
+
+  /* ---------------- 工具栏 ---------------- */
+  function insertAtCursor(before, after, placeholder) {
+    var ta = $("body");
+    var s = ta.selectionStart, e = ta.selectionEnd;
+    var sel = ta.value.slice(s, e) || placeholder || "";
+    ta.value = ta.value.slice(0, s) + before + sel + after + ta.value.slice(e);
+    ta.selectionStart = s + before.length;
+    ta.selectionEnd = s + before.length + sel.length;
+    ta.focus();
+  }
+
+  $("mdTools").addEventListener("click", function (ev) {
+    var btn = ev.target.closest("button[data-md]");
+    if (!btn) return;
+    var k = btn.dataset.md;
+    if (state.format === "html") { say("info", "HTML 模式下请直接写标签。"); return; }
+    if (k === "h2") insertAtCursor("\n## ", "\n", "小标题");
+    if (k === "bold") insertAtCursor("**", "**", "加粗文字");
+    if (k === "quote") insertAtCursor("\n> ", "\n", "引用内容");
+    if (k === "ul") insertAtCursor("\n- ", "\n", "列表项");
+    if (k === "code") insertAtCursor("\n" + FENCE + "\n", "\n" + FENCE + "\n", "code");
+    if (k === "img") {
+      var path = prompt("图片路径（在左侧图片区点一下可复制）", "../assets/images/");
+      if (path) insertAtCursor("\n![](" + path + ")\n", "", "");
+    }
+  });
+
+  $("fmtSeg").addEventListener("click", function (ev) {
+    var b = ev.target.closest("button[data-fmt]");
+    if (!b) return;
+    state.format = b.dataset.fmt;
+    Array.prototype.forEach.call($("fmtSeg").children, function (x) { x.classList.toggle("on", x === b); });
+    say("info", state.format === "md"
+      ? "Markdown 模式：用 ## 标题、**加粗**、- 列表"
+      : "HTML 模式：直接写 HTML 标签");
+  });
+
+  /* ---------------- 绑定 ---------------- */
+  $("btnNew").addEventListener("click", newPost);
+  $("btnSave").addEventListener("click", function () { save().catch(function () {}); });
+  $("btnPreview").addEventListener("click", refreshPreview);
+  $("btnPublish").addEventListener("click", publish);
+  $("btnPublish2").addEventListener("click", publish);
+  $("btnReload").addEventListener("click", function () { loadPosts(); loadImages(); loadGit(); });
+  $("imgInput").addEventListener("change", function (e) { uploadFiles(e.target.files); e.target.value = ""; });
+  $("draft").addEventListener("change", function () {
+    $("fileHint").textContent = this.checked ? "草稿：不会加入首页" : "保存后会自动加入首页";
+  });
+
+  window.addEventListener("beforeunload", function (e) {
+    if ($("body").value.trim() && !$("step1").classList.contains("done")) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  });
+
+  /* ---------------- 启动 ---------------- */
+  $("date").value = today();
+  loadPosts();
+  loadImages();
+  loadGit();
+})();
+</script>
+</body>
+</html>
