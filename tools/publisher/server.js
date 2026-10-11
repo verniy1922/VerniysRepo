@@ -448,25 +448,49 @@ function insertCard(meta) {
   const at = html.indexOf(UL);
   if (at < 0) throw new Error("index.html 里找不到 " + UL);
   const insertAt = at + UL.length;
-
-  const card = postCardHtml(meta);
+  // 锚定在真正的列表标签上，不用 indexOf，避免落到注释里的同名文字上
   const after = html.slice(insertAt);
   const lead = after.startsWith("\r\n") ? "\r\n" : "\n";
-  html = html.slice(0, insertAt) + lead + card + lead + after.replace(/^(\r?\n)+/, "");
+  html = html.slice(0, insertAt) + lead + postCardHtml(meta) + lead + after.replace(/^(\r?\n)+/, "");
 
   html = syncCount(html);
   fs.writeFileSync(INDEX_FILE, html, "utf-8");
   return countCards(html);
 }
 
-/** 从 index.html 里摘掉指定文章的卡片（用于把文章改成草稿） */
+/** 找出首页里所有文章卡片的边界（只认真正的卡片，跳过注释里的示例文字）。
+ *  必须跳过注释，否则正则可能从注释里的 <li class="post"> 开始匹配，
+ *  一路吃掉后面的 <ul class="post-list"> 和开头标签。 */
+function findCards(html) {
+  const ranges = [];
+  const re = /<li class="post">/g;
+  let m;
+  while ((m = re.exec(html))) {
+    const start = m.index;
+    // 落在注释内部的匹配要忽略
+    const before = html.slice(0, start);
+    if (before.lastIndexOf("<!--") > before.lastIndexOf("-->")) continue;
+    const end = html.indexOf("</li>", start + m[0].length);
+    if (end !== -1) ranges.push([start, end + "</li>".length]);
+  }
+  return ranges;
+}
+
+/** 从 index.html 里摘掉指定文章的卡片（用于删除文章 / 把文章改成草稿） */
 function removeCard(file) {
-  let html = read(INDEX_FILE);
-  const safe = file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(`\\s*<li class="post">(?:(?!</li>)[\\s\\S])*?posts/${safe}(?:(?!</li>)[\\s\\S])*?</li>`);
-  if (!re.test(html)) return false;
-  html = syncCount(html.replace(re, ""));
-  fs.writeFileSync(INDEX_FILE, html, "utf-8");
+  const html = read(INDEX_FILE);
+  const marked = `posts/${file}`;
+  let hit = -1;
+  for (const [s, e] of findCards(html)) {
+    if (html.slice(s, e).includes(marked)) { hit = s; break; }
+  }
+  if (hit === -1) return false;                 // 草稿本来就不在首页
+  const ranges = findCards(html);
+  const [s, e] = ranges[ranges.findIndex(([a]) => a === hit)];
+  // 连同卡片前面那一小段空白一起去掉，避免留一堆空行
+  const from = html.slice(0, s).replace(/\s+$/, "").length;
+  const out = html.slice(0, from) + html.slice(e);
+  fs.writeFileSync(INDEX_FILE, syncCount(out), "utf-8");
   return true;
 }
 
@@ -644,6 +668,39 @@ const server = http.createServer(async (req, res) => {
         tags: [...new Set(tags)].slice(0, 6),
         category: category || "随笔",
         body,
+      });
+    }
+
+    /* ---------- 删除文章 ---------- */
+    if (req.method === "POST" && p === "/api/delete") {
+      const b = JSON.parse((await readBody(req)).toString("utf-8"));
+      const raw = String(b.file || "").trim();
+      // 关键：含分隔符或 .. 的输入一律拒绝。
+      // 不能只靠 path.basename —— 它会把 "../../posts/001-static-blog.html"
+      // 悄悄变成 "001-static-blog.html"，等于放行了穿越请求。
+      if (!raw || raw !== path.basename(raw) || /[\\/]/.test(raw) || raw.includes("..")) {
+        return json(res, 400, { error: "文件名不合法（不允许路径）" });
+      }
+      if (!/^[\w.\-]+\.html$/i.test(raw)) {
+        return json(res, 400, { error: "文件名不合法" });
+      }
+      const file = raw;
+      const target = path.join(POSTS_DIR, file);
+      if (!fs.existsSync(target)) return json(res, 404, { error: "文章不存在：" + file });
+
+      const removedTitle = (/<h1 class="post-title">([\s\S]*?)<\/h1>/.exec(read(target)) || [, ""])[1].trim();
+
+      // 先摘卡片再删文件，两步都成功才算数
+      const hadCard = removeCard(file);
+      fs.unlinkSync(target);
+      const total = countCards(read(INDEX_FILE));
+
+      return json(res, 200, {
+        ok: true,
+        file,
+        title: removedTitle,
+        cardRemoved: hadCard,   // 草稿本来就不在首页，这里是 false 属正常
+        totalPosts: total,
       });
     }
 

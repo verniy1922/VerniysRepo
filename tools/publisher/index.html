@@ -85,6 +85,8 @@
   .btn.primary{ background:var(--blue); border-color:var(--blue); color:#fff; }
   .btn.primary:hover{ background:var(--blue-dark); border-color:var(--blue-dark); color:#fff; }
   .btn.ghost{ color:var(--text-soft); border-color:var(--line); }
+  .btn.danger{ color:var(--err); border-color:#F0CFCC; }
+  .btn.danger:hover{ background:var(--err-soft); border-color:#E4B4B0; color:#8E2F28; }
   .btn[disabled]{ opacity:.5; cursor:not-allowed; transform:none; }
   .btn-row{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
 
@@ -221,6 +223,7 @@
         <div class="btn-row">
           <button class="btn primary" id="btnSave" type="button">保存文章</button>
           <button class="btn" id="btnPreview" type="button">刷新预览</button>
+          <button class="btn danger" id="btnDelete" type="button" hidden>删除这篇</button>
           <span id="saveHint" style="color:var(--text-faint);font-size:12.5px"></span>
         </div>
       </div>
@@ -419,6 +422,7 @@
       $("commitMsg").value = "更新文章：" + j.title;
       $("saveHint").textContent = "";
       $("draft").checked = false;
+      $("btnDelete").hidden = false;      // 编辑已有文章时才允许删除
       state.format = "html";
       Array.prototype.forEach.call($("fmtSeg").children, function (x) {
         x.classList.toggle("on", x.dataset.fmt === "html");
@@ -442,6 +446,7 @@
     $("commitMsg").value = "";
     $("saveHint").textContent = "";
     $("draft").checked = false;
+    $("btnDelete").hidden = true;       // 新文章还没落盘，没有可删的
     $("preview").innerHTML = '<div class="empty">填好标题和正文后，点「刷新预览」看效果。</div>';
   }
 
@@ -481,6 +486,41 @@
     }).finally(function () {
       $("btnSave").disabled = false;
       if ($("saveHint").textContent === "保存中…") $("saveHint").textContent = "";
+    });
+  }
+
+  /* ---------------- 删除文章 ---------------- */
+  function deletePost() {
+    if (!state.file) { say("info", "当前还没有保存过的文章，没有可删除的内容。"); return; }
+    var file = state.file;
+    var title = $("title").value.trim() || file;
+
+    var ok = confirm(
+      "确定要删除这篇文章吗？\n\n" +
+      "标题：" + title + "\n" +
+      "文件：posts/" + file + "\n\n" +
+      "会同时删掉文章页和首页上的那张卡片。\n" +
+      "本地文件删除后，若还没点「发布到线上」，可从 git 历史里找回；\n" +
+      "推送之后就只能从 GitHub 历史里恢复了。"
+    );
+    if (!ok) return;
+
+    $("btnDelete").disabled = true;
+    $("saveHint").textContent = "删除中…";
+
+    api("POST", "/api/delete", { file: file }).then(function (j) {
+      say("ok", "已删除《" + (j.title || title) + "》" + (j.cardRemoved ? "，首页卡片也已移除" : "") +
+                "，首页现有 " + j.totalPosts + " 篇文章。别忘了点「发布到线上」。");
+      newPost();
+      loadPosts();
+      loadGit();
+      $("step1").classList.remove("done");
+      $("step2").classList.remove("done");
+    }).catch(function (e) {
+      say("err", "删除失败：" + e.message);
+    }).finally(function () {
+      $("btnDelete").disabled = false;
+      if ($("saveHint").textContent === "删除中…") $("saveHint").textContent = "";
     });
   }
 
@@ -619,6 +659,7 @@
   /* ---------------- 绑定 ---------------- */
   $("btnNew").addEventListener("click", newPost);
   $("btnSave").addEventListener("click", function () { save().catch(function () {}); });
+  $("btnDelete").addEventListener("click", deletePost);
   $("btnPreview").addEventListener("click", refreshPreview);
   $("btnPublish").addEventListener("click", publish);
   $("btnPublish2").addEventListener("click", publish);
