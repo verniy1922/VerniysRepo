@@ -65,6 +65,30 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+/** escapeHtml 的逆操作，用来把摘要从文件里读回来 */
+function unescapeHtml(s) {
+  return String(s == null ? "" : s)
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&");
+}
+
+/** 从文章文件里读出首页摘要：
+ *  优先取 <meta name="description">（发布器写的），
+ *  没有就退回正文第一段（兼容以前生成的老文章）。 */
+function readExcerpt(raw) {
+  const meta = /<meta\s+name="description"\s+content="([^"]*)"/i.exec(raw);
+  if (meta) return unescapeHtml(meta[1]).trim();
+  const bodyRaw = (/<div class="article">([\s\S]*?)<!-- ★ 正文结束 ★ -->/.exec(raw) || [, ""])[1];
+  return (/<p>\s*([\s\S]*?)\s*<\/p>/.exec(bodyRaw) || [, ""])[1]
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]+>/g, "")
+    .trim();
+}
+
 /** 2026-10-09 → 2026 年 10 月 9 日 */
 function formatCnDate(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || "").trim());
@@ -135,12 +159,21 @@ function baseHead() {
 function renderArticle(meta, bodyHtml) {
   const head = baseHead();
   const tags = (meta.tags || []).filter(Boolean);
+  const excerpt = String(meta.excerpt || "").trim();
 
   const tagSpans = (tags.length ? tags : ["随笔"])
     .map((t) => `          <span class="tag">${escapeHtml(t)}</span>`)
     .join("\n");
 
-  return `${head.replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(meta.title)} · verniy</title>`)}
+  // 首页摘要必须写进文章文件，否则重新打开时读不回来
+  //（以前只拿它生成首页卡片，用完就丢，导致草稿重开后摘要为空）
+  const headOut = head
+    .replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(meta.title)} · verniy</title>`)
+    .replace(/<\/head>/, (excerpt
+      ? `  <meta name="description" content="${escapeHtml(excerpt)}">\n`
+      : "") + "</head>");
+
+  return `${headOut}
 <body>
 <div class="shell">
 
@@ -416,8 +449,7 @@ function listDir(dir, kind) {
       const date = (/<time datetime="([^"]+)"/.exec(raw) || [, ""])[1];
       const catNav = (/<nav class="crumbs"[\s\S]*?<\/nav>/.exec(raw) || [""])[0];
       const category = (catNav.match(/<span>([\s\S]*?)<\/span>\s*<\/nav>/) || [, ""])[1].trim();
-      const bodyRaw = (/<div class="article">([\s\S]*?)<!-- ★ 正文结束 ★ -->/.exec(raw) || [, ""])[1];
-      const excerpt = (/<p>\s*([\s\S]*?)\s*<\/p>/.exec(bodyRaw) || [, ""])[1].replace(/<[^>]+>/g, "").trim();
+      const excerpt = readExcerpt(raw);
       return { file: f, title, date, category, excerpt, kind };
     });
 }
@@ -751,6 +783,7 @@ const server = http.createServer(async (req, res) => {
         title, date,
         tags: [...new Set(tags)].slice(0, 6),
         category: category || "随笔",
+        excerpt: readExcerpt(t),
         body,
       });
     }

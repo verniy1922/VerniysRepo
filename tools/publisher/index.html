@@ -459,7 +459,7 @@
       $("date").value = j.date || today();
       $("category").value = j.category || "随笔";
       $("tags").value = (j.tags || []).join(", ");
-      $("excerpt").value = "";
+      $("excerpt").value = j.excerpt || "";   // 把已保存的摘要读回输入框，别清空
       $("body").value = j.body;
       $("editorTitle").textContent = (j.isDraft ? "编辑草稿：" : "编辑文章：") + j.file;
       $("fileHint").textContent = j.isDraft
