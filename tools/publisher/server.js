@@ -278,6 +278,7 @@ ${tagSpans}
   var idx = 0;               // 当前播第几首
   var resumeAt = 0;          // 切页时需要跳转到的秒数
   var wantPlaying = false;   // 本次加载是否应该自动续播
+  var resumePending = false; // 是否还需要把进度跳回 resumeAt（跳过一次后就不需要了）
 
   /* 歌单：目前两首。一首放完自动接下一首，两首之间循环不断。
      资源目录从 <audio> 的 src 推断（主页是 assets/，文章页是 ../assets/），
@@ -312,6 +313,7 @@ ${tagSpans}
   function useTrack(i, noteText) {
     idx = ((i % PLAYLIST.length) + PLAYLIST.length) % PLAYLIST.length;
     resumeAt = 0;
+    resumePending = false;
     writeJSON(KEY, { playing: !audio.paused, time: 0, idx: idx });
     if (audio.getAttribute('src') !== PLAYLIST[idx].file) {
       audio.setAttribute('src', PLAYLIST[idx].file);
@@ -361,6 +363,7 @@ ${tagSpans}
     if (p && typeof p.then === 'function') {
       p.then(function () {
         wantPlaying = true;
+        if (audio.readyState >= 1) { resumePending = false; }   // 已就绪：位置就是对的
         saveState(true);
         syncUI(true);
       }).catch(function () {
@@ -384,7 +387,7 @@ ${tagSpans}
 
   if (playBtn) {
     playBtn.addEventListener('click', function () {
-      if (audio.paused) { play({ from: resumeAt }); } else { pause(); }
+      if (audio.paused) { play(); } else { pause(); }
     });
   }
   if (nextBtn) { nextBtn.addEventListener('click', function () { next(false); }); }
@@ -397,12 +400,13 @@ ${tagSpans}
     if (!audio.paused) { saveState(true); }
   });
   audio.addEventListener('loadedmetadata', function () {
-    if (wantPlaying && resumeAt > 0.05) {
+    if (wantPlaying && resumePending && resumeAt > 0.05) {
       try {
         if (Math.abs(audio.currentTime - resumeAt) > 0.2 && resumeAt < audio.duration - 0.5) {
           audio.currentTime = resumeAt;
         }
       } catch (e) {}
+      resumePending = false;                 // 只跳这一次，之后不再干预播放位置
     }
   });
 
@@ -437,6 +441,7 @@ ${tagSpans}
   if (savedState && typeof savedState.time === 'number' && isFinite(savedState.time)) {
     resumeAt = savedState.time;
   }
+  resumePending = resumeAt > 0.05;   // 只有真的要从中间续播才需要跳
   syncUI(false);
 
   if (savedState && savedState.playing === true && stillFresh) {
@@ -456,7 +461,7 @@ ${tagSpans}
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     if (t && t.closest && t.closest('button, a')) return;
     e.preventDefault();
-    if (audio.paused) { play({ from: resumeAt }); } else { pause(); }
+    if (audio.paused) { play(); } else { pause(); }
   });
 
 })();
