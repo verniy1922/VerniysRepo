@@ -15,6 +15,10 @@ blog/
 ├─ .gitignore                    把 drafts/ 排除在版本控制外（草稿不会被部署）
 ├─ start-publisher.cmd           本地发布器：双击启动，在网页里写文章并一键发布
 ├─ tools/publisher/              发布器本体（零依赖，只用 Node 内置模块）
+├─ tools/build-game.js           把 Godot 的 Web 导出整理成可部署目录（wasm 压 gzip，绕开 25 MB 单文件上限）
+├─ games/                        小游戏（Godot 4 导出，直接部署）
+│  ├─ life.html                  康威生命游戏的外壳页（站点样式 + 全屏 + 进游戏自动暂停音乐）
+│  └─ life/                      游戏本体（Web 导出；index.wasm.gz 约 10 MB，页面里当场解压）
 ├─ posts/                        已发布的文章（会同步到 GitHub 并部署）
 │  └─ 001-static-blog.html       文章页（也是发布器生成新文章时的样式基准）
 ├─ drafts/                       草稿箱（只在你本机，永不 push、永不部署）
@@ -24,6 +28,26 @@ blog/
    ├─ bgm2.mp3                   背景音乐②：山楂树（乌拉尔的花楸树）· 柯基-钢琴演奏
    └─ images/                    发布器上传的插图（用到时才会出现）
 ```
+
+## 小游戏
+
+`games/` 下每个游戏 = 一个外壳页 + 一个本体目录。外壳页负责站点样式、顶栏（回到主页 / 全屏），
+并在进入页面时把背景音乐置为暂停 —— 保留播放进度和当前第几首，回到主页也不会突然响。
+
+改完 Godot 工程之后这样更新：
+
+```bash
+# 1. 重新导出 Web 版（必须先建好 out/ 目录）
+cd ../godot/life
+Godot_v4.7.2-stable_win64_console.exe --headless --path . --export-release "Web" "out/index.html"
+
+# 2. 压 wasm + 拷进站点
+node ../../blog/tools/build-game.js
+```
+
+Cloudflare Pages 单文件上限 25 MiB，而 Godot 4.7 导出的 `index.wasm` 有 37.7 MB，
+所以 `tools/build-game.js` 会把它压成 `index.wasm.gz`（约 10 MB），再在导出的页面里插一段
+fetch 拦截器，浏览器取到 `.wasm.gz` 后当场解压交给引擎。
 
 ## 写文章：用本地发布器（推荐）
 
